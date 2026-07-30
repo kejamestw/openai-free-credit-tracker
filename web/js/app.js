@@ -26,8 +26,7 @@ function paint(groupId, group, usage) {
   el(`${groupId}Used`).textContent = fmt(usage.total);
   el(`${groupId}Left`).textContent = `推估可用 ${fmt(Math.max(0, quota - usage.total))}`;
   const lines = Object.entries(usage.models).map(([name, value]) => `${name}: ${fmt(value.total)} | input=${fmt(value.input)} | output=${fmt(value.output)}`);
-  el(`${groupId}Usage`).textContent = lines.join('
-') || '今日尚無已確認免費資料';
+  el(`${groupId}Usage`).textContent = lines.join('\n') || '今日尚無已確認免費資料';
 }
 
 async function initialize() {

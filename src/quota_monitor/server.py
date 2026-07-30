@@ -5,13 +5,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .cost_service import fetch_costs
-from .model_catalog import load_catalog, project_root
+from .model_catalog import load_catalog, resource_path
 from .openai_client import OpenAIAdminClient
 from .usage_service import fetch_usage
 
 
 class Handler(BaseHTTPRequestHandler):
-    web_root = project_root() / "web"
+    web_root = resource_path("web")
     catalog = load_catalog()
 
     def log_message(self, *_):
