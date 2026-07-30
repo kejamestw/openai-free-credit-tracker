@@ -42,11 +42,17 @@ def test_pyproject_uses_package_version_as_its_dynamic_source():
 def test_windows_build_is_fail_fast_and_runs_packaged_smoke_test():
     script = (ROOT / "scripts" / "build_windows.bat").read_text(encoding="utf-8")
     assert script.count("if errorlevel 1 exit /b 1") >= 6
-    assert "src\\quota_monitor\\app.py" in script
+    assert "scripts\\windows_entry.py" in script
     assert '"dist\\OpenAI-Free-Credit-Tracker.exe" --smoke-test' in script
     assert '"dist\\OpenAI-Free-Credit-Tracker.exe" --version' in script
     assert "explorer" not in script.lower()
     assert "pause" not in script.lower()
+
+
+def test_windows_entrypoint_imports_the_package_entrypoint():
+    source = (ROOT / "scripts" / "windows_entry.py").read_text(encoding="utf-8")
+    assert "from quota_monitor.app import main" in source
+    assert 'if __name__ == "__main__":' in source
 
 
 def test_source_smoke_test_validates_all_runtime_resources():

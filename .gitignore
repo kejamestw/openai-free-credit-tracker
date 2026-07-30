@@ -11,6 +11,7 @@ venv/
 build/
 dist/
 *.spec
+*.egg-info/
 *.log
 openai_usage_debug*.json
 openai_daily_usage*.json

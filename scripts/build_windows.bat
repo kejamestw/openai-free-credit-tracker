@@ -9,7 +9,7 @@ if errorlevel 1 exit /b 1
 python -m pip install -e .
 if errorlevel 1 exit /b 1
 
-python -m PyInstaller --noconfirm --clean --onefile --name OpenAI-Free-Credit-Tracker --paths src --add-data "web;web" --add-data "data;data" src\quota_monitor\app.py
+python -m PyInstaller --noconfirm --clean --onefile --name OpenAI-Free-Credit-Tracker --paths src --add-data "web;web" --add-data "data;data" scripts\windows_entry.py
 if errorlevel 1 exit /b 1
 
 if not exist "dist\OpenAI-Free-Credit-Tracker.exe" (
