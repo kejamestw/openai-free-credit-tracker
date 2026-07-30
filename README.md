@@ -66,7 +66,7 @@ python -m quota_monitor --smoke-test
 scripts\build_windows.bat
 ```
 
-腳本會安裝開發相依套件、建立 one-file EXE，並執行封裝後的資源與 loopback smoke test。成功產物位於：
+腳本會安裝專案與開發相依套件、建立 one-file EXE，並執行封裝後的資源與 loopback smoke test。成功產物位於：
 
 ```text
 dist\OpenAI-Free-Credit-Tracker.exe
@@ -112,8 +112,11 @@ dist\OpenAI-Free-Credit-Tracker.exe
 ```powershell
 python -m pip install -r requirements-dev.txt
 python scripts\validate_models.py
+python scripts\audit_repository.py
 python -m pytest -q
+node --check web\js\domain.js
 node --check web\js\app.js
+node --test tests\frontend_domain.test.cjs
 ```
 
 ## 貢獻與安全通報
