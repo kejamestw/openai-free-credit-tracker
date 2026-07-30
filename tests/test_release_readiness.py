@@ -1,3 +1,5 @@
+import os
+import sys
 import subprocess
 import tomllib
 from pathlib import Path
@@ -39,8 +41,36 @@ def test_pyproject_uses_package_version_as_its_dynamic_source():
 
 def test_windows_build_is_fail_fast_and_runs_packaged_smoke_test():
     script = (ROOT / "scripts" / "build_windows.bat").read_text(encoding="utf-8")
-    assert script.count("if errorlevel 1 exit /b 1") >= 4
+    assert script.count("if errorlevel 1 exit /b 1") >= 6
     assert "src\\quota_monitor\\app.py" in script
     assert '"dist\\OpenAI-Free-Credit-Tracker.exe" --smoke-test' in script
+    assert '"dist\\OpenAI-Free-Credit-Tracker.exe" --version' in script
     assert "explorer" not in script.lower()
     assert "pause" not in script.lower()
+
+
+def test_source_smoke_test_validates_all_runtime_resources():
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + environment.get(
+        "PYTHONPATH", ""
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "quota_monitor", "--smoke-test"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    assert f"{__version__} smoke test passed" in result.stdout
+
+
+def test_repository_audit_passes():
+    result = subprocess.run(
+        [sys.executable, "scripts/audit_repository.py"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "repository audit passed" in result.stdout

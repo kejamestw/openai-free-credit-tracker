@@ -9,13 +9,51 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: python -m pip install -r requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
       - shell: pwsh
-        run: pyinstaller --noconfirm --clean --onefile --name OpenAI-Free-Credit-Tracker --paths src --add-data "web;web" --add-data "data;data" src/quota_monitor/app.py
+        name: Require tag to match the package version
+        run: |
+          $env:PYTHONPATH = "src"
+          $packageVersion = python -c "from quota_monitor import __version__; print(__version__)"
+          if ($env:GITHUB_REF_NAME -ne "v$packageVersion") {
+            throw "Tag $env:GITHUB_REF_NAME does not match package version v$packageVersion"
+          }
+      - name: Run release gates
+        shell: pwsh
+        run: |
+          python -m pip install -e .
+          python -m pip install -r requirements-dev.txt
+          python scripts\validate_models.py
+          python scripts\audit_repository.py
+          python -m pytest -q
+          node --check web\js\domain.js
+          node --check web\js\app.js
+          node --test tests\frontend_domain.test.cjs
+      - name: Build and smoke-test the one-file executable
+        shell: cmd
+        run: scripts\build_windows.bat
+      - name: Verify packaged version and smoke test
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "src"
+          $packageVersion = python -c "from quota_monitor import __version__; print(__version__)"
+          $versionOutput = & dist\OpenAI-Free-Credit-Tracker.exe --version
+          if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch " $([regex]::Escape($packageVersion))$") {
+            throw "Unexpected packaged version: $versionOutput"
+          }
+          & dist\OpenAI-Free-Credit-Tracker.exe --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged smoke test failed" }
       - shell: pwsh
-        run: Get-FileHash dist/OpenAI-Free-Credit-Tracker.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  OpenAI-Free-Credit-Tracker.exe" } | Set-Content dist/SHA256SUMS.txt
+        name: Generate and verify checksum
+        run: |
+          $actual = (Get-FileHash dist\OpenAI-Free-Credit-Tracker.exe -Algorithm SHA256).Hash
+          "$actual  OpenAI-Free-Credit-Tracker.exe" | Set-Content -Encoding ascii dist\SHA256SUMS.txt
+          $expected = (Get-Content dist\SHA256SUMS.txt).Split()[0]
+          if ($actual -ne $expected) { throw "Generated checksum verification failed" }
       - uses: softprops/action-gh-release@v2
         with:
           files: |

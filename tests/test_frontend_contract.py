@@ -12,6 +12,7 @@ def test_page_exposes_version_utc_disclaimer_and_live_state():
     assert "非官方" in html
     assert 'id="status"' in html
     assert 'aria-live="polite"' in html
+    assert "0.1.0" not in html
 
 
 def test_app_implements_all_five_query_states_and_accessible_tooltips():

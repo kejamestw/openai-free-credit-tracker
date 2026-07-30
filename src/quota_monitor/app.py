@@ -2,8 +2,24 @@ import argparse
 import threading
 import webbrowser
 
+from .model_catalog import resource_path
 from .server import create_server
 from .version import __version__
+
+
+REQUIRED_RESOURCES = (
+    ("data", "models.json"),
+    ("web", "index.html"),
+    ("web", "css", "app.css"),
+    ("web", "js", "app.js"),
+    ("web", "js", "domain.js"),
+)
+
+
+def validate_resources() -> None:
+    missing = ["/".join(parts) for parts in REQUIRED_RESOURCES if not resource_path(*parts).is_file()]
+    if missing:
+        raise RuntimeError(f"missing bundled resources: {', '.join(missing)}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None):
     args = build_parser().parse_args(argv)
+    validate_resources()
     server = create_server()
     if args.smoke_test:
         host, _ = server.server_address
