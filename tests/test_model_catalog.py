@@ -13,3 +13,19 @@ def test_alias_lookup():
 def test_resource_root_uses_pyinstaller_bundle_directory(monkeypatch, tmp_path):
     monkeypatch.setattr("quota_monitor.model_catalog.sys._MEIPASS", str(tmp_path), raising=False)
     assert resource_root() == tmp_path.resolve()
+
+
+def test_catalog_contains_verified_gpt_5_6_standard_prices():
+    catalog = load_catalog()
+
+    assert catalog["last_updated"] == "2026-07-31"
+    assert find_model("gpt-5.6-terra", catalog)["pricing"] == {
+        "input": 2,
+        "cached_input": 0.2,
+        "output": 12,
+    }
+    assert find_model("gpt-5.6-luna", catalog)["pricing"] == {
+        "input": 0.2,
+        "cached_input": 0.02,
+        "output": 1.2,
+    }

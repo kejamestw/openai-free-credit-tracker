@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-07-30",
+  "last_updated": "2026-07-31",
   "currency": "USD",
   "price_unit": "per_1m_tokens",
   "cost_levels": {
@@ -75,9 +75,9 @@
           "aliases": [],
           "eligible": true,
           "pricing": {
-            "input": 2.5,
-            "cached_input": 0.25,
-            "output": 15
+            "input": 2,
+            "cached_input": 0.2,
+            "output": 12
           },
           "source": "https://developers.openai.com/api/docs/pricing"
         },
@@ -86,9 +86,9 @@
           "aliases": [],
           "eligible": true,
           "pricing": {
-            "input": 1,
-            "cached_input": 0.1,
-            "output": 6
+            "input": 0.2,
+            "cached_input": 0.02,
+            "output": 1.2
           },
           "source": "https://developers.openai.com/api/docs/pricing"
         },
