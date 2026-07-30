@@ -1,3 +1,6 @@
+from .openai_client import OpenAIClientError
+
+
 class CostsDataError(ValueError):
     """Raised when an upstream Costs API response cannot be safely interpreted."""
 
@@ -66,6 +69,12 @@ def fetch_costs(client, start_time: int, end_time: int) -> dict:
                 "code": "costs_response_invalid",
                 "message": "Costs API returned data in an unsupported format.",
             },
+        }
+    except OpenAIClientError as exc:
+        return {
+            "actual_usd": None,
+            "available": False,
+            "error": {"code": exc.code, "message": exc.message},
         }
     except Exception:
         return {
