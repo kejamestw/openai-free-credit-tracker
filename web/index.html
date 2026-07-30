@@ -6,21 +6,71 @@
   <title>OpenAI Free Credit Tracker</title>
   <link rel="stylesheet" href="css/app.css">
 </head>
-<body>
+<body data-query-state="initial">
   <main class="container">
-    <header><h1>OpenAI 免費額度監控</h1><p>本機優先，主圖只顯示已確認的免費 Token 流量。</p></header>
-    <section class="toolbar card">
-      <input id="key" type="password" placeholder="sk-admin-..." autocomplete="off">
-      <button id="update">更新今日資料</button>
-      <button id="toggle" class="secondary">顯示／隱藏</button>
-      <span id="status">尚未查詢</span>
+    <header class="hero">
+      <p class="eyebrow">OpenAI Free Credit Tracker <span class="version">v<span id="appVersion">0.1.0</span></span></p>
+      <h1>每日免費額度，一眼看清楚</h1>
+      <p class="lede">主圖只計入已確認的 incentivized／data-sharing 流量，其他用量與費用資訊分開呈現。</p>
+      <div class="notice" role="note">
+        <strong>UTC 日界線</strong>　每日自 00:00 UTC 重新計算。這是非官方社群工具，結果不代表 OpenAI 官方餘額保證。
+      </div>
+    </header>
+
+    <section class="toolbar card" aria-labelledby="queryTitle">
+      <div class="section-heading">
+        <div><p class="eyebrow">安全查詢</p><h2 id="queryTitle">Organization Admin API Key</h2></div>
+        <span class="memory-only">只留在記憶體</span>
+      </div>
+      <form id="queryForm" class="query-form">
+        <label class="key-field" for="key">
+          <span>Admin API Key</span>
+          <input id="key" type="password" placeholder="sk-admin-…" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="keyHelp">
+        </label>
+        <div class="actions">
+          <button id="update" type="submit">更新今日資料</button>
+          <button id="toggle" type="button" class="secondary" aria-pressed="false">顯示 Key</button>
+        </div>
+      </form>
+      <p id="keyHelp" class="help">Key 不會寫入 URL、瀏覽器儲存空間、設定檔或 Log；關閉程式後即消失。</p>
+      <div id="status" class="status" data-state="initial" role="status" aria-live="polite">初始化本機模型目錄中…</div>
     </section>
-    <section id="quotaCards" class="grid"></section>
-    <section class="card"><h2>輔助資訊</h2><div class="metrics"><div><small>標準原價估算</small><b id="listPrice">US$0.0000</b></div><div><small>OpenAI 實際成本</small><b id="actualCost">US$0.0000</b></div><div><small>未標示免費 Token</small><b id="otherTokens">0</b></div></div><p id="costNote"></p></section>
-    <section class="grid"><div class="card"><h2>高階群組可用模型</h2><div id="standardModels"></div></div><div class="card"><h2>Mini／Nano 可用模型</h2><div id="miniModels"></div></div></section>
-    <details class="card"><summary>查詢 Console</summary><pre id="console">等待查詢</pre></details>
-    <footer>非官方社群工具，與 OpenAI 無隸屬或背書關係。</footer>
+
+    <section aria-labelledby="quotaTitle">
+      <div class="section-heading page-section-heading">
+        <div><p class="eyebrow">Complimentary usage</p><h2 id="quotaTitle">今日免費群組</h2></div>
+        <span id="dataWindow" class="utc-window">UTC 日界線：尚未查詢</span>
+      </div>
+      <div id="quotaCards" class="grid quota-grid" aria-busy="true">
+        <div class="card empty-state">正在載入群組資料…</div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="costTitle">
+      <div class="section-heading"><div><p class="eyebrow">Separate signals</p><h2 id="costTitle">費用與其他用量</h2></div></div>
+      <div class="metrics">
+        <div><small>目錄價格估算</small><b id="listPrice">US$0.0000</b></div>
+        <div><small>Costs API 實際費用</small><b id="actualCost">尚未查詢</b></div>
+        <div><small>其他用量 Token</small><b id="otherTokens">0</b></div>
+        <div><small>無目錄價格 Token</small><b id="unpricedTokens">0</b></div>
+      </div>
+      <p id="costNote" class="help">目錄估算與 Costs API 實際費用是不同資料來源。</p>
+    </section>
+
+    <section class="grid model-grid" aria-label="模型目錄">
+      <div class="card"><p class="eyebrow">Standard</p><h2>高階群組可用模型</h2><div id="standardModels" class="model-list"></div></div>
+      <div class="card"><p class="eyebrow">Mini / Nano</p><h2>Mini／Nano 可用模型</h2><div id="miniModels" class="model-list"></div></div>
+    </section>
+
+    <details class="card diagnostics">
+      <summary>本次查詢摘要</summary>
+      <p class="help">Request ID：<code id="requestId">尚未查詢</code></p>
+      <pre id="console">等待查詢</pre>
+    </details>
+
+    <footer>非官方社群工具，與 OpenAI 無隸屬或背書關係。資料依 UTC 日界線計算。</footer>
   </main>
+  <script src="js/domain.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
