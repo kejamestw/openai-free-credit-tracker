@@ -16,6 +16,8 @@ openai_usage_debug*.json
 openai_daily_usage*.json
 .vscode/
 .idea/
+.agent/
+.agents/
 .DS_Store
 Thumbs.db
 desktop.ini
