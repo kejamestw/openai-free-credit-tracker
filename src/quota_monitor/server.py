@@ -36,7 +36,7 @@ class Handler(BaseHTTPRequestHandler):
                 key = self.headers.get("X-Admin-Key", "").strip()
                 client = OpenAIAdminClient(key)
                 usage = fetch_usage(client, self.catalog)
-                costs = fetch_costs(client, usage["start"])
+                costs = fetch_costs(client, usage["start"], usage["end"])
                 return self.send_json(200, {"usage": usage, "costs": costs})
             except Exception as exc:
                 return self.send_json(400, {"error": {"message": str(exc)}})

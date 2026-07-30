@@ -1,14 +1,26 @@
+INCENTIVIZED_TIERS = frozenset(
+    {
+        "incentivized-tier",
+        "data-sharing",
+        "data-sharing-incentive",
+    }
+)
+
+
 def is_incentivized(service_tier: str | None) -> bool:
-    value = (service_tier or "").lower()
-    return "incentiv" in value or "data_sharing" in value
+    value = (service_tier or "").strip().lower().replace("_", "-")
+    return value in INCENTIVIZED_TIERS
 
 
 def estimate_cost(input_tokens: int, cached_tokens: int, output_tokens: int, pricing: dict) -> float:
-    uncached = max(0, input_tokens - cached_tokens)
+    safe_input = max(0, input_tokens)
+    safe_cached = min(safe_input, max(0, cached_tokens))
+    safe_output = max(0, output_tokens)
+    uncached = safe_input - safe_cached
     return (
         uncached * pricing["input"]
-        + cached_tokens * pricing["cached_input"]
-        + output_tokens * pricing["output"]
+        + safe_cached * pricing["cached_input"]
+        + safe_output * pricing["output"]
     ) / 1_000_000
 
 

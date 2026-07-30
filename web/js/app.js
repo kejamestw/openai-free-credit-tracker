@@ -46,10 +46,10 @@ el('update').onclick = async () => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || `HTTP ${response.status}`);
     Object.entries(catalog.groups).forEach(([id, group]) => paint(id, group, data.usage.groups[id]));
-    el('listPrice').textContent = `US$${data.usage.list_price.toFixed(4)}`;
-    el('actualCost').textContent = `US$${data.costs.actual.toFixed(4)}`;
-    el('otherTokens').textContent = fmt(data.usage.other_tokens);
-    el('costNote').textContent = data.costs.error ? `Costs API 暫時無法讀取：${data.costs.error}` : '實際成本可能延遲更新，請以 OpenAI 帳務後台為準。';
+    el('listPrice').textContent = `US$${data.usage.list_price_estimate_usd.toFixed(4)}`;
+    el('actualCost').textContent = data.costs.available ? `US$${data.costs.actual_usd.toFixed(4)}` : '無法取得';
+    el('otherTokens').textContent = fmt(data.usage.other_usage.total);
+    el('costNote').textContent = data.costs.error ? data.costs.error.message : '實際成本可能延遲更新，請以 OpenAI 帳務後台為準。';
     el('console').textContent = JSON.stringify(data.usage.debug, null, 2);
     el('status').textContent = '更新成功';
   } catch (error) {
