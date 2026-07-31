@@ -1,6 +1,6 @@
 const el = id => document.getElementById(id);
 const fmt = value => Number(value || 0).toLocaleString('zh-TW');
-const { escapeHTML, queryOutcome, quotaProgress } = globalThis.QuotaDomain;
+const { escapeHTML, localFetchFailureKind, queryOutcome, quotaProgress } = globalThis.QuotaDomain;
 const ADMIN_KEY_PATTERN = /^sk-admin-[A-Za-z0-9_-]{8,}$/;
 let catalog;
 
@@ -52,6 +52,22 @@ function formatUtcWindow(start, end) {
   const startText = new Date(start * 1000).toISOString().replace('.000Z', 'Z');
   const endText = new Date(end * 1000).toISOString().replace('.000Z', 'Z');
   return `UTC 日界線：${startText} → ${endText}`;
+}
+
+function describeLocalFetchFailure(error) {
+  const kind = localFetchFailureKind(error, globalThis.location?.protocol);
+  if (kind === 'file') {
+    return '本機服務尚未啟動。請從 EXE、scripts\\run_windows.bat 或 python -m quota_monitor 啟動，並使用它開啟的 http://127.0.0.1:<port> 頁面。';
+  }
+  if (kind === 'network') {
+    return '無法連到本機服務。請確認 OpenAI-Free-Credit-Tracker 視窗仍開啟，並使用它開啟的 http://127.0.0.1:<port> 頁面操作。';
+  }
+  return error.message || '本機服務未回傳可讀取的錯誤。';
+}
+
+function localFetchDiagnostics(error) {
+  if (error.requestId) return '本機 API 已回傳錯誤 envelope；請用 Request ID 對照本機服務視窗的 log。';
+  return '沒有收到本機 API 回應；常見原因是本機服務視窗已關閉、頁面不是從 127.0.0.1 開啟，或瀏覽器/端點安全軟體阻擋 loopback request。';
 }
 
 async function readJSON(response) {
@@ -138,8 +154,8 @@ el('queryForm').addEventListener('submit', async event => {
     }
   } catch (error) {
     el('requestId').textContent = error.requestId || '未提供';
-    el('console').textContent = '查詢失敗；請依上方訊息修正後重試。';
-    setState('failure', `查詢失敗：${error.message}`);
+    el('console').textContent = localFetchDiagnostics(error);
+    setState('failure', `查詢失敗：${describeLocalFetchFailure(error)}`);
   } finally {
     el('update').disabled = false;
     el('queryForm').setAttribute('aria-busy', 'false');
@@ -149,5 +165,5 @@ el('queryForm').addEventListener('submit', async event => {
 initialize().catch(error => {
   el('update').disabled = true;
   el('quotaCards').setAttribute('aria-busy', 'false');
-  setState('failure', `初始化失敗：${error.message}`);
+  setState('failure', `初始化失敗：${describeLocalFetchFailure(error)}`);
 });

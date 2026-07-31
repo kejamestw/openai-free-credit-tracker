@@ -42,11 +42,22 @@ def test_pyproject_uses_package_version_as_its_dynamic_source():
 def test_windows_build_is_fail_fast_and_runs_packaged_smoke_test():
     script = (ROOT / "scripts" / "build_windows.bat").read_text(encoding="utf-8")
     assert script.count("if errorlevel 1 exit /b 1") >= 6
+    assert ".venv\\Scripts\\python.exe" in script
+    assert '"%PYTHON_EXE%" %PYTHON_ARGS% -m pip install -r requirements-dev.txt' in script
     assert "scripts\\windows_entry.py" in script
     assert '"dist\\OpenAI-Free-Credit-Tracker.exe" --smoke-test' in script
     assert '"dist\\OpenAI-Free-Credit-Tracker.exe" --version' in script
     assert "explorer" not in script.lower()
     assert "pause" not in script.lower()
+
+
+def test_windows_run_script_prefers_local_venv_and_accepts_cli_args():
+    script = (ROOT / "scripts" / "run_windows.bat").read_text(encoding="utf-8")
+    assert ".venv\\Scripts\\python.exe" in script
+    assert '"%PYTHON_EXE%" %PYTHON_ARGS% -m quota_monitor %*' in script
+    assert "Python 3.10 or newer was not found" in script
+    assert "py -3 -m quota_monitor" not in script
+    assert "python -m quota_monitor" not in script
 
 
 def test_windows_entrypoint_imports_the_package_entrypoint():

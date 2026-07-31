@@ -20,6 +20,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Replaced raw browser `Failed to fetch` messages with local-server troubleshooting guidance.
+- Made Windows run/build scripts prefer a repository `.venv` before falling back to `py -3` or `python`.
 - Repaired the dashboard JavaScript syntax error and tracked text control characters.
 - Resolved bundled `web/` and `data/` paths through PyInstaller's one-file extraction root.
 - Prevented duplicate or malformed pagination cursors and invalid upstream schemas from producing misleading totals.

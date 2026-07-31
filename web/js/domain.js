@@ -34,5 +34,12 @@
       .replaceAll("'", '&#39;');
   }
 
-  return { escapeHTML, queryOutcome, quotaProgress };
+  function localFetchFailureKind(error, protocol) {
+    const message = String(error && error.message ? error.message : error || '');
+    if (protocol === 'file:') return 'file';
+    if (/failed to fetch|networkerror|load failed|fetch failed/i.test(message)) return 'network';
+    return 'unknown';
+  }
+
+  return { escapeHTML, localFetchFailureKind, queryOutcome, quotaProgress };
 });

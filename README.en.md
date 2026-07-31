@@ -56,6 +56,10 @@ python -m quota_monitor --version
 python -m quota_monitor --smoke-test
 ```
 
+### Troubleshooting
+
+If the UI shows "Query failed: cannot reach the local service", confirm that the Tracker EXE or command prompt window is still open and that you are using the `http://127.0.0.1:<random-port>` page opened by the app. Do not open `web/index.html` directly or serve the page from another dev server or remote URL.
+
 ## Build the Windows executable
 
 ```bat

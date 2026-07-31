@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { escapeHTML, queryOutcome, quotaProgress } = require('../web/js/domain.js');
+const { escapeHTML, localFetchFailureKind, queryOutcome, quotaProgress } = require('../web/js/domain.js');
 
 test('quota progress handles zero quota without invalid values', () => {
   assert.deepEqual(quotaProgress(25, 0), {
@@ -49,4 +49,11 @@ test('query outcome distinguishes success and partial success', () => {
 test('catalog labels are escaped before HTML rendering', () => {
   assert.equal(escapeHTML('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;');
   assert.equal(escapeHTML('A&B"'), 'A&amp;B&quot;');
+});
+
+test('local fetch failures are categorized for actionable UI messages', () => {
+  assert.equal(localFetchFailureKind(new Error('Failed to fetch'), 'http:'), 'network');
+  assert.equal(localFetchFailureKind(new Error('Load failed'), 'https:'), 'network');
+  assert.equal(localFetchFailureKind(new Error('ignored'), 'file:'), 'file');
+  assert.equal(localFetchFailureKind(new Error('OpenAI rejected the key'), 'http:'), 'unknown');
 });

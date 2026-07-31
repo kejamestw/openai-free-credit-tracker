@@ -60,6 +60,10 @@ python -m quota_monitor --version
 python -m quota_monitor --smoke-test
 ```
 
+### 疑難排除
+
+如果 UI 顯示「查詢失敗：無法連到本機服務」，請確認啟動 Tracker 的 EXE 或命令提示字元視窗仍開啟，並且是在它自動開啟的 `http://127.0.0.1:<random-port>` 頁面操作。不要直接雙擊 `web/index.html`，也不要把頁面改由其他 dev server 或遠端網址載入。
+
 ## 建立 Windows EXE
 
 ```bat
