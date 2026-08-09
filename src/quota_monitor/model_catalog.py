@@ -1,16 +1,25 @@
 import json
 import re
+import sys
 from pathlib import Path
 
 DATE_SUFFIX = re.compile(r"-20\d{2}-\d{2}-\d{2}$")
 
 
-def project_root() -> Path:
+def resource_root() -> Path:
+    """Return the source root or PyInstaller's one-file extraction root."""
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        return Path(bundle_root).resolve()
     return Path(__file__).resolve().parents[2]
 
 
+def resource_path(*parts: str) -> Path:
+    return resource_root().joinpath(*parts)
+
+
 def load_catalog(path: Path | None = None) -> dict:
-    catalog_path = path or project_root() / "data" / "models.json"
+    catalog_path = path or resource_path("data", "models.json")
     return json.loads(catalog_path.read_text(encoding="utf-8"))
 
 

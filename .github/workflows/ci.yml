@@ -9,14 +9,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
       - run: python -m pip install -e .
       - run: python -m pip install -r requirements-dev.txt
       - run: python scripts/validate_models.py
-      - run: pytest
-      - name: Secret pattern check
-        run: |
-          if grep -R -n -E 'sk-(admin|proj)-[A-Za-z0-9_-]{10,}' . --exclude-dir=.git; then
-            echo "Potential API key detected"; exit 1
-          fi
+      - name: Secret and tracked-text audit
+        run: python scripts/audit_repository.py
+      - run: python -m pytest -q
+      - run: node --check web/js/domain.js
+      - run: node --check web/js/app.js
+      - run: node --test tests/frontend_domain.test.cjs

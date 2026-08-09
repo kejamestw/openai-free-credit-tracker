@@ -4,82 +4,91 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
 ![License](https://img.shields.io/badge/License-Apache--2.0-green)
-![Status](https://img.shields.io/badge/status-alpha-orange)
+![Status](https://img.shields.io/badge/status-release%20candidate-orange)
 
 [English](README.en.md) | 繁體中文
 
 ## 功能
 
 - 分別追蹤高階模型群組與 Mini／Nano 群組的每日免費 Token。
-- 主圖只計入 OpenAI Usage API 明確標示為 `incentivized-tier` 或 data-sharing incentive 的流量。
-- 每日以 `00:00 UTC` 重置，介面同時顯示台灣時間區間。
-- 模型名稱自動移除快照日期。
-- 模型膠囊顯示費用高／中／低標籤，滑鼠移入可查看價格與計算公式。
-- Usage API 與 Costs API 分開處理，成本查詢失敗不會阻擋額度顯示。
-- Admin API Key 僅保留在程式記憶體，不寫入磁碟或瀏覽器儲存空間。
-- 本機服務只監聽 `127.0.0.1`。
+- 主圖只計入 Usage API 明確標示為 `incentivized-tier` 或已知 data-sharing incentive 的流量。
+- 每日以 `00:00 UTC` 為日界線。
+- 分開顯示免費群組用量、其他用量、目錄價格估算與 Costs API 實際費用。
+- Costs API 失敗時仍顯示成功取得的 Usage 資料。
+- Admin API Key 僅存在程式與頁面記憶體，不寫入磁碟或瀏覽器儲存空間。
+- 本機服務只監聽 `127.0.0.1` 的隨機連接埠。
 
 ## 重要聲明
 
-本專案是非官方工具，與 OpenAI 無隸屬或背書關係。免費額度、適用模型與價格可能變動，請以 OpenAI 官方文件及帳務後台為準。
+本專案是非官方工具，與 OpenAI 無隸屬或背書關係。免費額度、適用模型、價格與 API 行為可能變動，請以 OpenAI 官方文件及帳務後台為準。
 
-請勿將 Admin API Key 貼到第三方網站、公開 Issue、截圖或 Git Commit 中。
+請勿將 Admin API Key 貼到第三方網站、公開 Issue、截圖或 Git commit 中。建議使用專供驗收且可隨時撤銷的 Organization Owner Admin Key。
 
-## 快速開始
+## Windows portable EXE
 
-### Windows
+正式 Release 會同時提供：
 
-1. 安裝 Python 3.10 或以上版本。
-2. 下載 Repository，或執行 `git clone`。
-3. 雙擊 `scripts/run_windows.bat`。
-4. 瀏覽器開啟後，貼入以 `sk-admin-` 開頭且可讀取 Usage 的 Admin API Key。
-5. 按下「更新今日資料」。
+- `OpenAI-Free-Credit-Tracker.exe`
+- `SHA256SUMS.txt`
 
-### 命令列
+下載後先在 PowerShell 驗證雜湊：
 
-```bash
-python -m quota_monitor
+```powershell
+Get-FileHash .\OpenAI-Free-Credit-Tracker.exe -Algorithm SHA256
+Get-Content .\SHA256SUMS.txt
 ```
 
-如果尚未安裝本專案：
+確認值相同後執行 EXE。預設瀏覽器會開啟 `http://127.0.0.1:<random-port>`。關閉程式視窗或按 `Ctrl+C` 即會停止本機服務；重新啟動後必須重新輸入 Admin API Key。
 
-```bash
+v0.1.0 的正式 EXE 仍須通過 roadmap 中的乾淨 Windows 10／11 人工驗收後才能發布。
+
+## 從原始碼執行
+
+需要 Python 3.10 或以上版本：
+
+```powershell
 python -m pip install -e .
 python -m quota_monitor
 ```
 
+也可以在 Windows 雙擊 `scripts\run_windows.bat`。
+
+查看版本或執行本機 smoke test：
+
+```powershell
+python -m quota_monitor --version
+python -m quota_monitor --smoke-test
+```
+
+### 疑難排除
+
+如果 UI 顯示「查詢失敗：無法連到本機服務」，請確認啟動 Tracker 的 EXE 或命令提示字元視窗仍開啟，並且是在它自動開啟的 `http://127.0.0.1:<random-port>` 頁面操作。不要直接雙擊 `web/index.html`，也不要把頁面改由其他 dev server 或遠端網址載入。
+
 ## 建立 Windows EXE
 
 ```bat
-scriptsuild_windows.bat
+scripts\build_windows.bat
 ```
 
-完成後檔案位於：
+腳本會安裝專案與開發相依套件、建立 one-file EXE，並執行封裝後的資源與 loopback smoke test。成功產物位於：
 
 ```text
 dist\OpenAI-Free-Credit-Tracker.exe
 ```
 
-## 專案結構
+任何安裝、建置或 smoke-test 步驟失敗時，腳本會回傳非零 exit code。
 
-```text
-src/quota_monitor/   Python 後端與 OpenAI API 邏輯
-web/                 HTML、CSS、JavaScript
-data/models.json     模型群組、別名與價格
-tests/               單元測試與匿名 Fixture
-docs/                架構、安全與價格文件
-.github/              CI、Issue 與 PR 模板
-```
+## 安全模型
 
-## 費用標籤
+- Admin API Key 只透過 `X-Admin-Key` request header 傳給 loopback server，再由 server 放入 OpenAI Authorization header。
+- Key 不會放入 URL、Log、localStorage、sessionStorage、IndexedDB 或設定檔。
+- 所有 HTTP 回應使用 `Cache-Control: no-store`。
+- 靜態檔案只從封裝的 `web/` 目錄提供，traversal 請求會被拒絕。
+- 本工具不會要求或保存 Project ID 與 Organization ID。
 
-費用級距以「1,000 Input Token + 1,000 Output Token」的標準案例判斷：
+## 費用與用量說明
 
-- 低：低於 US$0.003
-- 中：US$0.003 至未滿 US$0.012
-- 高：US$0.012 以上
-
-公式：
+「目錄價格估算」依 `data/models.json` 的價格計算，與 Costs API 回報的「實際費用」是不同資料。估算公式為：
 
 ```text
 成本 =
@@ -88,20 +97,35 @@ docs/                架構、安全與價格文件
 + 輸出 Token × Output 單價 / 1,000,000
 ```
 
+費用級距使用「1,000 Input Token + 1,000 Output Token」的標準案例：
+
+- 低：低於 US$0.003
+- 中：US$0.003 至未滿 US$0.012
+- 高：US$0.012 以上
+
 ## 已知限制
 
-- Usage 與 Costs 資料可能延遲。
-- 剩餘免費額度是依 API 的 Service Tier 標記推算，不是官方餘額保證。
-- 成本標籤是快速比較，不代表模型品質。
-- 目前集中於 Completions Usage，工具、微調與 Evals 不在主要統計範圍。
+- 需要 Organization Owner Admin API Key；一般 project key 不適用。
+- Usage 與 Costs 資料可能延遲，推估免費用量不是官方餘額保證。
+- v0.1.0 不保存設定、歷史、匯出資料或 Key。
+- v0.1.0 聚焦 Windows；macOS、Linux、自動更新、系統匣、警示、多專案與多語言均不在本版範圍。
+- 目前主要統計 Completions Usage；工具、微調與 Evals 不納入主要免費群組。
 
-## 貢獻
+## 開發與驗證
 
-歡迎回報錯誤、更新價格、改善 UI 或增加測試。請先閱讀 [CONTRIBUTING.md](CONTRIBUTING.md)。
+```powershell
+python -m pip install -r requirements-dev.txt
+python scripts\validate_models.py
+python scripts\audit_repository.py
+python -m pytest -q
+node --check web\js\domain.js
+node --check web\js\app.js
+node --test tests\frontend_domain.test.cjs
+```
 
-## 安全性
+## 貢獻與安全通報
 
-請勿在公開 Issue 貼出金鑰或完整敏感 JSON。請閱讀 [SECURITY.md](SECURITY.md)。
+請先閱讀 [CONTRIBUTING.md](CONTRIBUTING.md)、[SECURITY.md](SECURITY.md) 與 [docs/security.md](docs/security.md)。請勿在公開 Issue 提供 Key、完整敏感回應或帳務資料。
 
 ## 授權
 

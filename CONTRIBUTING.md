@@ -4,12 +4,12 @@
 
 ## 開發環境
 
-```bash
+```powershell
 python -m venv .venv
-.venv\Scriptsctivate
+.venv\Scripts\activate
 python -m pip install -e .
 python -m pip install -r requirements-dev.txt
-pytest
+python -m pytest -q
 ```
 
 ## 提交流程
@@ -17,9 +17,9 @@ pytest
 1. Fork Repository。
 2. 從 `main` 建立功能分支，例如 `feat/model-catalog`。
 3. 修改程式並補上測試。
-4. 執行 `pytest`。
-5. 確認沒有金鑰、Project ID、Email、帳務資訊或真實 Usage JSON。
-6. 使用清楚的 Commit 訊息，例如 `fix: handle delayed costs response`。
+4. 執行完整驗證命令。
+5. 確認沒有金鑰、Project ID、Organization ID、Email、帳務資訊或真實 Usage JSON。
+6. 使用 Conventional Commit，例如 `fix: handle delayed costs response`。
 7. 建立 Pull Request 並說明問題、作法與測試結果。
 
 ## 更新模型或價格
@@ -34,9 +34,9 @@ pytest
 
 請同步執行：
 
-```bash
+```powershell
 python scripts/validate_models.py
-pytest
+python -m pytest -q
 ```
 
 ## 禁止提交
@@ -45,3 +45,4 @@ pytest
 - 真實 Project／Organization ID
 - 未匿名化的 API 回應
 - 個人帳務截圖
+- `.agent/`、`.agents/`、建置產物或本機設定
