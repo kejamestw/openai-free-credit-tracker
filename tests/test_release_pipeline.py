@@ -758,6 +758,9 @@ def test_candidate_and_publish_workflows_are_strictly_separated():
     assert "signed candidates require Developer ID signing" in candidate
     assert "scripts/fetch_pinned_tool.py" in candidate
     assert "xvfb-run --auto-servernum python scripts/build_release.py --platform linux" in candidate
+    assert '"cryptography>=43.0,<49.0"' in (ROOT / "pyproject.toml").read_text(
+        encoding="utf-8"
+    )
     assert 'metadata_args=(generate --directory' in candidate
     assert "Get-AuthenticodeSignature" in candidate
     assert "WINDOWS_CERTIFICATE_PFX" in candidate
