@@ -782,7 +782,10 @@ def test_intel_macos_bundle_uses_cryptography_openssl_abi(tmp_path, monkeypatch)
         == ["-change", source_crypto.as_posix(), "@loader_path/libcrypto.3.dylib"]
         for command in commands
     )
-    assert sum(command[:3] == ["lipo", "-verify_arch", "x86_64"] for command in commands) == 2
+    assert sum(
+        command[0] == "lipo" and command[-2:] == ["-verify_arch", "x86_64"]
+        for command in commands
+    ) == 2
 
 
 def test_intel_macos_openssl_discovery_follows_libssl_dependency(tmp_path, monkeypatch):

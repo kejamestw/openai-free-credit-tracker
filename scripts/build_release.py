@@ -281,7 +281,7 @@ def _bundle_intel_macos_openssl(
         ]
     )
     for destination in destinations.values():
-        run(["lipo", "-verify_arch", "x86_64", str(destination)])
+        run(["lipo", str(destination), "-verify_arch", "x86_64"])
     repaired_dependencies = _macos_dependencies(destinations["libssl.3.dylib"])
     if not any(
         dependency.as_posix() == "@loader_path/libcrypto.3.dylib"
