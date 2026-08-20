@@ -168,6 +168,11 @@ class Handler(BaseHTTPRequestHandler):
         return PublicHTTPError(error.status, error.code, error.message, error.params)
 
     def _query(self, target, *, allowed: set[str]) -> dict[str, str]:
+        # Python 3.10 treats an empty string as a malformed field when
+        # strict_parsing is enabled; newer versions return an empty list.
+        # A request without a query string is valid on every endpoint.
+        if not target.query:
+            return {}
         try:
             pairs = parse_qsl(
                 target.query,

@@ -301,7 +301,13 @@ def format_utc(value: datetime, locale: str) -> str:
     selected = canonicalize_locale(locale, ["en", "zh-TW"])
     utc_value = value.astimezone(timezone.utc)
     if selected == "zh-TW":
-        return utc_value.strftime("%Y年%m月%d日 %H:%M UTC")
+        # Python 3.10 on Windows encodes the entire strftime format through
+        # the active ANSI locale. Keep directives ASCII-only and compose the
+        # localized separators as Unicode in Python instead.
+        return (
+            f"{utc_value.strftime('%Y')}年{utc_value.strftime('%m')}月"
+            f"{utc_value.strftime('%d')}日 {utc_value.strftime('%H:%M')} UTC"
+        )
     return utc_value.strftime("%Y-%m-%d %H:%M UTC")
 
 

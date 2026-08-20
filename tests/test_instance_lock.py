@@ -2,6 +2,12 @@ import json
 import os
 
 from quota_monitor.platform_adapters import FileInstanceLock
+from quota_monitor.platform_adapters.instance_lock import process_is_alive
+
+
+def test_process_probe_is_read_only_for_current_and_missing_processes():
+    assert process_is_alive(os.getpid()) is True
+    assert process_is_alive(2_147_483_647) is False
 
 
 def test_file_instance_lock_excludes_second_owner_and_releases(tmp_path):
