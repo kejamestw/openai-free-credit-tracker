@@ -1,6 +1,7 @@
 import http.client
 import json
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -696,7 +697,12 @@ def test_upstream_failures_keep_status_and_safe_envelope(failure, status, code):
 def test_success_response_and_log_do_not_expose_secrets(capsys):
     with running_server() as server:
         status, _headers, body = request(server, "/api/data", {"X-Admin-Key": ADMIN_KEY})
-    output = capsys.readouterr().out
+    deadline = time.monotonic() + 1
+    output = ""
+    while "request_id=" not in output and time.monotonic() < deadline:
+        output += capsys.readouterr().out
+        if "request_id=" not in output:
+            time.sleep(0.01)
     assert status == 200
     assert ADMIN_KEY not in body.decode()
     assert ADMIN_KEY not in output
