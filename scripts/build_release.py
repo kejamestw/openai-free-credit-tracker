@@ -386,12 +386,13 @@ def _mac_credentials(channel: str) -> tuple[str, str, str, str] | None:
     return values if all(values) else None
 
 
-def _build_macos(bundle: Path, output: Path, version: str, arch: str, channel: str) -> list[Path]:
-    executable = bundle / "Contents" / "MacOS" / APP_NAME
-    _verify(executable, version, expect_update_trust=channel in {"beta", "stable"})
-    credentials = _mac_credentials(channel)
-    if credentials:
-        identity, _key_path, _key_id, _issuer = credentials
+def _sign_macos_bundle(bundle: Path, identity: str | None) -> None:
+    if identity is None:
+        # PyInstaller ad-hoc signs the bundle before we replace Info.plist.
+        # Re-sign after native metadata is finalized so the bundle remains
+        # executable on both Intel and Apple Silicon release runners.
+        run(["codesign", "--force", "--deep", "--sign", "-", str(bundle)])
+    else:
         run(
             [
                 "codesign",
@@ -407,8 +408,15 @@ def _build_macos(bundle: Path, output: Path, version: str, arch: str, channel: s
                 str(bundle),
             ]
         )
-        run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(bundle)])
+    run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(bundle)])
 
+
+def _build_macos(bundle: Path, output: Path, version: str, arch: str, channel: str) -> list[Path]:
+    executable = bundle / "Contents" / "MacOS" / APP_NAME
+    credentials = _mac_credentials(channel)
+    _sign_macos_bundle(bundle, credentials[0] if credentials else None)
+    _verify(executable, version, expect_update_trust=channel in {"beta", "stable"})
+    if credentials:
         notary_archive = bundle.parent / f".{APP_NAME}-notary.zip"
         run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(bundle), str(notary_archive)])
         _identity, key_path, key_id, issuer = credentials

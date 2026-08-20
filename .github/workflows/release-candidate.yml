@@ -292,7 +292,8 @@ jobs:
           python scripts/fetch_pinned_tool.py runtime-x86_64 --output build/tools/runtime-x86_64
       - name: Build tarball and AppImage
         run: |
-          python scripts/build_release.py --platform linux --arch x86_64 --channel "${{ inputs.channel }}" --appimagetool build/tools/appimagetool-x86_64.AppImage --appimage-runtime build/tools/runtime-x86_64 --output-dir dist/release-artifacts
+          command -v xvfb-run >/dev/null
+          xvfb-run --auto-servernum python scripts/build_release.py --platform linux --arch x86_64 --channel "${{ inputs.channel }}" --appimagetool build/tools/appimagetool-x86_64.AppImage --appimage-runtime build/tools/runtime-x86_64 --output-dir dist/release-artifacts
           version="$(python -c 'from quota_monitor import __version__; print(__version__)')"
           echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
       - name: Generate platform SBOM

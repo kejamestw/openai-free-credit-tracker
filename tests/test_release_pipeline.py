@@ -686,6 +686,30 @@ def test_native_metadata_and_stable_macos_credentials_are_fail_closed(tmp_path, 
         build_release._windows_signing("stable")
 
 
+def test_macos_bundle_is_resigned_after_native_metadata_changes(tmp_path, monkeypatch):
+    bundle = tmp_path / "Tracker.app"
+    commands = []
+    monkeypatch.setattr(build_release, "run", lambda command, **_kwargs: commands.append(command))
+
+    build_release._sign_macos_bundle(bundle, None)
+    assert commands[0] == [
+        "codesign",
+        "--force",
+        "--deep",
+        "--sign",
+        "-",
+        str(bundle),
+    ]
+    assert commands[1][:4] == ["codesign", "--verify", "--deep", "--strict"]
+
+    commands.clear()
+    build_release._sign_macos_bundle(bundle, "Developer ID Application: Example")
+    assert "runtime" in commands[0]
+    assert "--timestamp" in commands[0]
+    assert "Developer ID Application: Example" in commands[0]
+    assert commands[1][:4] == ["codesign", "--verify", "--deep", "--strict"]
+
+
 def test_every_github_action_is_pinned_to_a_full_commit_sha():
     failures = []
     for workflow in sorted((ROOT / ".github" / "workflows").glob("*.y*ml")):
@@ -711,6 +735,7 @@ def test_candidate_and_publish_workflows_are_strictly_separated():
     assert "MACOS_SIGNING_IDENTITY" in candidate
     assert "signed candidates require Developer ID signing" in candidate
     assert "scripts/fetch_pinned_tool.py" in candidate
+    assert "xvfb-run --auto-servernum python scripts/build_release.py --platform linux" in candidate
     assert 'metadata_args=(generate --directory' in candidate
     assert "Get-AuthenticodeSignature" in candidate
     assert "WINDOWS_CERTIFICATE_PFX" in candidate
