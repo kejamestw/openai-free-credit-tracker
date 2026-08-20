@@ -415,6 +415,7 @@ def _build_macos(bundle: Path, output: Path, version: str, arch: str, channel: s
     executable = bundle / "Contents" / "MacOS" / APP_NAME
     credentials = _mac_credentials(channel)
     _sign_macos_bundle(bundle, credentials[0] if credentials else None)
+    run(["file", str(executable)])
     _verify(executable, version, expect_update_trust=channel in {"beta", "stable"})
     if credentials:
         notary_archive = bundle.parent / f".{APP_NAME}-notary.zip"

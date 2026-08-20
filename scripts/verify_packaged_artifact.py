@@ -6,6 +6,7 @@ import argparse
 import os
 import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -18,6 +19,36 @@ def command_for(executable: Path, arguments: list[str], *, appimage: bool = Fals
 
 def _tree_snapshot(root: Path) -> tuple[str, ...]:
     return tuple(sorted(str(path.relative_to(root)) for path in root.rglob("*")))
+
+
+def run_checked(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: int,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> subprocess.CompletedProcess[str]:
+    result = runner(
+        command,
+        cwd=cwd,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode:
+        # The packaged checks run against empty temporary application paths and
+        # never receive credentials. Bound diagnostics so native loader errors
+        # remain actionable without dumping an unbounded child-process stream.
+        stdout = (result.stdout or "").strip()[-4096:]
+        stderr = (result.stderr or "").strip()[-4096:]
+        raise RuntimeError(
+            f"packaged command failed with exit {result.returncode}; "
+            f"stdout={stdout!r}; stderr={stderr!r}"
+        )
+    return result
 
 
 def verify(
@@ -36,25 +67,19 @@ def verify(
         for kind in ("CONFIG", "DATA", "CACHE", "LOG"):
             environment[f"OPENAI_CREDIT_TRACKER_{kind}_DIR"] = str(root / kind.lower())
 
-        version = subprocess.run(
+        version = run_checked(
             command_for(executable, ["--version"], appimage=appimage),
             cwd=root,
             env=environment,
-            check=True,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
         if not version.stdout.strip().endswith(f" {expected_version}"):
             raise RuntimeError(f"unexpected packaged version: {version.stdout.strip()}")
         before_import = _tree_snapshot(root)
-        import_smoke = subprocess.run(
+        import_smoke = run_checked(
             command_for(executable, ["--packaged-import-smoke"], appimage=appimage),
             cwd=root,
             env=environment,
-            check=True,
-            capture_output=True,
-            text=True,
             timeout=60,
         )
         expected_state = "present" if expect_update_trust else "absent"
@@ -65,11 +90,10 @@ def verify(
         if _tree_snapshot(root) != before_import:
             raise RuntimeError("packaged import smoke wrote application state")
         for flag in ("--smoke-test", "--packaged-self-test"):
-            subprocess.run(
+            run_checked(
                 command_for(executable, [flag], appimage=appimage),
                 cwd=root,
                 env=environment,
-                check=True,
                 timeout=60,
             )
 

@@ -4,6 +4,7 @@ import base64
 import json
 import plistlib
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from scripts import (
     release_metadata,
     sign_artifact_manifest,
     validate_channel_promotion,
+    verify_packaged_artifact,
     verify_release_reuse,
 )
 
@@ -708,6 +710,26 @@ def test_macos_bundle_is_resigned_after_native_metadata_changes(tmp_path, monkey
     assert "--timestamp" in commands[0]
     assert "Developer ID Application: Example" in commands[0]
     assert commands[1][:4] == ["codesign", "--verify", "--deep", "--strict"]
+
+
+def test_packaged_verifier_reports_bounded_native_loader_diagnostics(tmp_path):
+    def failed_runner(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["artifact"],
+            returncode=126,
+            stdout="x" * 5000,
+            stderr="dyld: missing native dependency",
+        )
+
+    with pytest.raises(RuntimeError, match="dyld: missing native dependency") as caught:
+        verify_packaged_artifact.run_checked(
+            ["artifact", "--version"],
+            cwd=tmp_path,
+            env={},
+            timeout=1,
+            runner=failed_runner,
+        )
+    assert len(str(caught.value)) < 4300
 
 
 def test_every_github_action_is_pinned_to_a_full_commit_sha():
