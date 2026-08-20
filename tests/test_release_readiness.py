@@ -1,8 +1,12 @@
 import os
 import sys
 import subprocess
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 compatibility.
+    import tomli as tomllib
 
 from quota_monitor import __version__
 

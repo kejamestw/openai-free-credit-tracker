@@ -42,6 +42,8 @@ jobs:
       - run: python scripts/validate_docs.py
       - name: Secret and tracked-text audit
         run: python scripts/audit_repository.py
+      - name: Create isolated pytest parent directory
+        run: python -c "from pathlib import Path; Path('build').mkdir(exist_ok=True)"
       - run: python -m pytest -q --basetemp build/pytest-ci-${{ runner.os }}-${{ matrix.python }}
       - run: node --check web/js/domain.js
       - run: node --check web/js/app.js
