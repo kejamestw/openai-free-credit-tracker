@@ -35,7 +35,7 @@ def test_pyproject_uses_package_version_as_its_dynamic_source():
     assert pyproject["tool"]["setuptools"]["dynamic"]["version"] == {
         "attr": "quota_monitor.version.__version__"
     }
-    assert __version__ == "0.1.0"
+    assert __version__ == "1.0.0-rc.1"
     assert not (ROOT / "VERSION").exists()
 
 

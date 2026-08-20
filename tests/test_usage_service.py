@@ -156,3 +156,43 @@ def test_usage_ignores_unknown_fields_but_rejects_invalid_token_fields():
     invalid = usage_row(input_tokens="1000")
     with pytest.raises(UsageDataError, match="input_tokens"):
         summarize_usage([{"results": [invalid]}], CATALOG)
+
+
+def test_cache_write_tokens_are_included_once_and_mark_list_price_incomplete():
+    result = summarize_usage(
+        [
+            {
+                "results": [
+                    usage_row(
+                        input_tokens=1_000,
+                        input_cached_tokens=200,
+                        input_cache_write_tokens=300,
+                        output_tokens=100,
+                    )
+                ]
+            }
+        ],
+        CATALOG,
+    )
+
+    assert result["groups"]["mini"]["total"] == 1_100
+    assert result["cache_write_tokens"] == 300
+    assert result["list_price_estimate_incomplete"] is True
+
+
+def test_cache_write_tokens_cannot_exceed_total_input():
+    with pytest.raises(UsageDataError, match="input_cache_write_tokens"):
+        summarize_usage(
+            [
+                {
+                    "results": [
+                        usage_row(
+                            input_tokens=10,
+                            input_cached_tokens=0,
+                            input_cache_write_tokens=11,
+                        )
+                    ]
+                }
+            ],
+            CATALOG,
+        )

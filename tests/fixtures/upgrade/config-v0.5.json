@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "ui": {
+    "language": "en",
+    "open_browser_on_start": false
+  },
+  "network": {
+    "request_timeout_seconds": 90
+  },
+  "updates": {
+    "channel": "stable",
+    "check_on_start": true
+  },
+  "history": {
+    "retention_days": 730
+  },
+  "monitoring": {
+    "enabled": true,
+    "interval_seconds": 600,
+    "freshness_threshold_seconds": 1200
+  },
+  "profiles": {
+    "active_profile_id": "prof_22222222222222222222222222222222"
+  },
+  "startup": {
+    "enabled": false
+  }
+}

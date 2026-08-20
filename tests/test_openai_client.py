@@ -21,7 +21,7 @@ class FakeResponse:
     def __exit__(self, *_):
         return False
 
-    def read(self):
+    def read(self, *_args):
         return self.payload
 
 
@@ -53,7 +53,7 @@ def test_http_errors_are_mapped_without_leaking_key(monkeypatch, status, code, l
             io.BytesIO(json.dumps({"error": {"message": ADMIN_KEY}}).encode()),
         )
 
-    monkeypatch.setattr("quota_monitor.openai_client.urlopen", fail)
+    monkeypatch.setattr("quota_monitor.openai_client._open", fail)
     with pytest.raises(OpenAIClientError) as caught:
         OpenAIAdminClient(ADMIN_KEY).get("/organization/costs", {"start_time": 1})
     assert caught.value.code == code
@@ -73,7 +73,7 @@ def test_network_errors_are_actionable_and_sanitized(monkeypatch, failure, code,
     def fail(*_args, **_kwargs):
         raise failure
 
-    monkeypatch.setattr("quota_monitor.openai_client.urlopen", fail)
+    monkeypatch.setattr("quota_monitor.openai_client._open", fail)
     with pytest.raises(OpenAIClientError) as caught:
         OpenAIAdminClient(ADMIN_KEY).get("/organization/costs", {"start_time": 1})
     assert caught.value.code == code
@@ -83,10 +83,46 @@ def test_network_errors_are_actionable_and_sanitized(monkeypatch, failure, code,
 
 def test_invalid_json_is_mapped_to_safe_response_error(monkeypatch):
     monkeypatch.setattr(
-        "quota_monitor.openai_client.urlopen",
+        "quota_monitor.openai_client._open",
         lambda *_args, **_kwargs: FakeResponse(b"not-json"),
     )
     with pytest.raises(OpenAIClientError) as caught:
         OpenAIAdminClient(ADMIN_KEY).get("/organization/costs", {"start_time": 1})
     assert caught.value.code == "upstream_response_invalid"
     assert caught.value.http_status == 502
+
+
+def test_redirect_is_rejected_without_following_or_leaking_key(monkeypatch):
+    def redirect(*_args, **_kwargs):
+        raise HTTPError(
+            "https://untrusted.invalid/collect",
+            302,
+            "Found",
+            {"Location": "https://untrusted.invalid/collect"},
+            io.BytesIO(),
+        )
+
+    monkeypatch.setattr("quota_monitor.openai_client._open", redirect)
+    with pytest.raises(OpenAIClientError) as caught:
+        OpenAIAdminClient(ADMIN_KEY).get("/organization/costs", {"start_time": 1})
+    assert caught.value.code == "upstream_redirect_rejected"
+    assert ADMIN_KEY not in str(caught.value)
+
+
+def test_non_allowlisted_upstream_path_is_rejected_before_network(monkeypatch):
+    monkeypatch.setattr(
+        "quota_monitor.openai_client._open",
+        lambda *_args, **_kwargs: pytest.fail("network must not be called"),
+    )
+    with pytest.raises(ValueError, match="allowlisted"):
+        OpenAIAdminClient(ADMIN_KEY).get("/organization/users", {})
+
+
+def test_oversized_response_is_rejected_before_json_parsing(monkeypatch):
+    monkeypatch.setattr(
+        "quota_monitor.openai_client._open",
+        lambda *_args, **_kwargs: FakeResponse(b" " * (8 * 1024 * 1024 + 1)),
+    )
+    with pytest.raises(OpenAIClientError) as caught:
+        OpenAIAdminClient(ADMIN_KEY).get("/organization/costs", {"start_time": 1})
+    assert caught.value.code == "upstream_response_too_large"

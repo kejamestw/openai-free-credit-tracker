@@ -3,73 +3,260 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>OpenAI Free Credit Tracker</title>
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body data-query-state="initial">
-  <main class="container">
-    <header class="hero">
-      <p class="eyebrow">OpenAI Free Credit Tracker <span class="version">v<span id="appVersion">讀取中</span></span></p>
-      <h1>每日免費額度，一眼看清楚</h1>
-      <p class="lede">主圖只計入已確認的 incentivized／data-sharing 流量，其他用量與費用資訊分開呈現。</p>
-      <div class="notice" role="note">
-        <strong>UTC 日界線</strong>　每日自 00:00 UTC 重新計算。這是非官方社群工具，結果不代表 OpenAI 官方餘額保證。
-      </div>
-    </header>
-
-    <section class="toolbar card" aria-labelledby="queryTitle">
-      <div class="section-heading">
-        <div><p class="eyebrow">安全查詢</p><h2 id="queryTitle">Organization Admin API Key</h2></div>
-        <span class="memory-only">只留在記憶體</span>
-      </div>
-      <form id="queryForm" class="query-form">
-        <label class="key-field" for="key">
-          <span>Admin API Key</span>
-          <input id="key" type="password" placeholder="sk-admin-…" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="keyHelp">
-        </label>
-        <div class="actions">
-          <button id="update" type="submit">更新今日資料</button>
-          <button id="toggle" type="button" class="secondary" aria-pressed="false">顯示 Key</button>
+  <a class="skip-link" href="#mainContent" data-i18n="accessibility.skip_to_content">跳至主要內容</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">Q</span>
+        <div>
+          <b data-i18n="app.name">OpenAI 免費額度追蹤器</b>
+          <small>v<span id="appVersion">—</span></small>
         </div>
-      </form>
-      <p id="keyHelp" class="help">Key 不會寫入 URL、瀏覽器儲存空間、設定檔或 Log；關閉程式後即消失。</p>
-      <div id="status" class="status" data-state="initial" role="status" aria-live="polite">初始化本機模型目錄中…</div>
-    </section>
-
-    <section aria-labelledby="quotaTitle">
-      <div class="section-heading page-section-heading">
-        <div><p class="eyebrow">Complimentary usage</p><h2 id="quotaTitle">今日免費群組</h2></div>
-        <span id="dataWindow" class="utc-window">UTC 日界線：尚未查詢</span>
       </div>
-      <div id="quotaCards" class="grid quota-grid" aria-busy="true">
-        <div class="card empty-state">正在載入群組資料…</div>
+
+      <label class="compact-field" for="profileSelector">
+        <span data-i18n="profile.selector_label">目前設定檔</span>
+        <select id="profileSelector" disabled>
+          <option value="" data-i18n="profile.none">尚未建立設定檔</option>
+        </select>
+      </label>
+
+      <nav class="nav-list" aria-label="Views">
+        <button class="nav-item active" type="button" data-view-target="dashboard" aria-current="page" data-i18n="navigation.dashboard">儀表板</button>
+        <button class="nav-item" type="button" data-view-target="history" data-i18n="navigation.history">歷史紀錄</button>
+        <button class="nav-item" type="button" data-view-target="profiles" data-i18n="navigation.profiles">設定檔</button>
+        <button class="nav-item" type="button" data-view-target="alerts" data-i18n="navigation.alerts">通知</button>
+        <button class="nav-item" type="button" data-view-target="settings" data-i18n="navigation.settings">設定</button>
+      </nav>
+
+      <div class="sidebar-note">
+        <span class="privacy-dot" aria-hidden="true"></span>
+        <span data-i18n="app.local_first">資料保留在這台裝置</span>
       </div>
-    </section>
+    </aside>
 
-    <section class="card" aria-labelledby="costTitle">
-      <div class="section-heading"><div><p class="eyebrow">Separate signals</p><h2 id="costTitle">費用與其他用量</h2></div></div>
-      <div class="metrics">
-        <div><small>目錄價格估算</small><b id="listPrice">US$0.0000</b></div>
-        <div><small>Costs API 實際費用</small><b id="actualCost">尚未查詢</b></div>
-        <div><small>其他用量 Token</small><b id="otherTokens">0</b></div>
-        <div><small>無目錄價格 Token</small><b id="unpricedTokens">0</b></div>
+    <main id="mainContent" class="main-content" tabindex="-1">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" data-i18n="app.tagline">本機優先的用量與成本監控</p>
+          <h1 id="viewTitle" data-i18n="navigation.dashboard">儀表板</h1>
+        </div>
+        <label class="locale-control" for="localeSelector">
+          <span class="sr-only" data-i18n="settings.language">顯示語言</span>
+          <select id="localeSelector">
+            <option value="zh-TW">繁體中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+      </header>
+
+      <div id="globalStatus" class="status-banner" data-state="initial" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status" data-i18n="dashboard.ready">輸入 Admin API Key 後即可查詢；Key 只保留在這次要求的記憶體中。</span>
       </div>
-      <p id="costNote" class="help">目錄估算與 Costs API 實際費用是不同資料來源。</p>
-    </section>
 
-    <section class="grid model-grid" aria-label="模型目錄">
-      <div class="card"><p class="eyebrow">Standard</p><h2>高階群組可用模型</h2><div id="standardModels" class="model-list"></div></div>
-      <div class="card"><p class="eyebrow">Mini / Nano</p><h2>Mini／Nano 可用模型</h2><div id="miniModels" class="model-list"></div></div>
-    </section>
+      <section class="view active" data-view="dashboard" aria-labelledby="dashboardTitle">
+        <div class="hero-panel">
+          <div>
+            <p class="eyebrow" data-i18n="dashboard.complimentary">Complimentary usage</p>
+            <h2 id="dashboardTitle" data-i18n="dashboard.hero_title">看懂今日免費額度，不混淆估價與帳單</h2>
+            <p data-i18n="dashboard.hero_body">Usage、Costs 與模型目錄是不同來源；畫面會清楚標示資料時間與完整性。</p>
+          </div>
+          <div class="actions"><button id="syncNow" class="secondary-button" type="button" data-i18n="tray.sync_now">立即同步</button><div class="utc-chip"><b>UTC</b><span id="dataWindow" data-i18n="dashboard.utc_pending">等待第一次查詢</span></div></div>
+        </div>
 
-    <details class="card diagnostics">
-      <summary>本次查詢摘要</summary>
-      <p class="help">Request ID：<code id="requestId">尚未查詢</code></p>
-      <pre id="console">等待查詢</pre>
-    </details>
+        <section class="card query-card" aria-labelledby="queryTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow" data-i18n="dashboard.one_time_query">單次安全查詢</p>
+              <h2 id="queryTitle">Organization Admin API Key</h2>
+            </div>
+            <span class="pill" data-i18n="dashboard.memory_only">只存於記憶體</span>
+          </div>
+          <form id="queryForm" class="query-form">
+            <label class="field key-field" for="key">
+              <span>Admin API Key</span>
+              <span class="password-wrap">
+                <input id="key" type="password" placeholder="sk-admin-…" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="keyHelp">
+                <button id="toggle" type="button" class="text-button" aria-pressed="false" data-i18n="dashboard.show_key">顯示</button>
+              </span>
+            </label>
+            <button id="update" class="primary-button" type="submit" data-i18n="dashboard.query">查詢今日用量</button>
+          </form>
+          <p id="keyHelp" class="help" data-i18n="dashboard.key_help">Key 不會放入 URL、設定檔、資料庫、瀏覽器儲存空間或 log。</p>
+        </section>
 
-    <footer>非官方社群工具，與 OpenAI 無隸屬或背書關係。資料依 UTC 日界線計算。</footer>
-  </main>
+        <div id="quotaCards" class="quota-grid" aria-busy="true">
+          <article class="card empty-state" data-i18n="dashboard.no_data">尚未取得用量資料。</article>
+        </div>
+
+        <section class="card" aria-labelledby="signalsTitle">
+          <div class="section-heading">
+            <div><p class="eyebrow">Separate signals</p><h2 id="signalsTitle" data-i18n="dashboard.cost_signals">成本與估價訊號</h2></div>
+          </div>
+          <div class="metrics">
+            <div><small data-i18n="dashboard.list_price">目錄牌價估算</small><b id="listPrice">US$0.0000</b></div>
+            <div><small data-i18n="dashboard.actual_cost">Costs API 實際成本</small><b id="actualCost">—</b></div>
+            <div><small data-i18n="dashboard.other_tokens">其他服務層 Token</small><b id="otherTokens">0</b></div>
+            <div><small data-i18n="dashboard.unpriced_tokens">未定價 Token</small><b id="unpricedTokens">0</b></div>
+          </div>
+          <p id="costNote" class="help" data-i18n="dashboard.cost_note">估算不是帳單；實際成本以 OpenAI Costs API 為準。</p>
+        </section>
+
+        <section class="model-grid" aria-label="Model catalog">
+          <article class="card"><p class="eyebrow">Standard</p><h2 data-i18n="dashboard.standard_models">Standard 免費模型</h2><div id="standardModels" class="model-list"></div></article>
+          <article class="card"><p class="eyebrow">Mini / Nano</p><h2 data-i18n="dashboard.mini_models">Mini / Nano 免費模型</h2><div id="miniModels" class="model-list"></div></article>
+        </section>
+
+        <details class="card diagnostics">
+          <summary data-i18n="dashboard.diagnostics">安全診斷資訊</summary>
+          <p class="help"><span data-i18n="dashboard.request_id">Request ID</span>: <code id="requestId">—</code></p>
+          <pre id="console" data-i18n="dashboard.no_diagnostics">尚無診斷資訊。</pre>
+        </details>
+      </section>
+
+      <section class="view" data-view="history" aria-labelledby="historyTitle" hidden>
+        <div class="view-heading"><div><p class="eyebrow">UTC history</p><h2 id="historyTitle" data-i18n="history.title">用量歷史</h2></div><div class="actions"><button id="exportCsv" class="secondary-button" type="button">CSV</button><button id="exportJson" class="secondary-button" type="button">JSON</button></div></div>
+        <section class="card">
+          <form id="historyForm" class="filter-grid">
+            <label class="field" for="historyStart"><span data-i18n="history.start_date">開始日期</span><input id="historyStart" type="date"></label>
+            <label class="field" for="historyEnd"><span data-i18n="history.end_date">結束日期</span><input id="historyEnd" type="date"></label>
+            <label class="field" for="historyProject"><span data-i18n="history.project">專案</span><select id="historyProject"><option value="" data-i18n="history.all_projects">所有專案</option></select></label>
+            <button class="primary-button" type="submit" data-i18n="history.refresh">更新</button>
+          </form>
+          <div class="actions history-presets" aria-label="Trend range">
+            <button id="historyRange7" class="secondary-button" type="button" data-i18n="history.range_7">最近 7 天</button>
+            <button id="historyRange30" class="secondary-button" type="button" data-i18n="history.range_30">最近 30 天</button>
+            <button id="historyRange90" class="secondary-button" type="button" data-i18n="history.range_90">最近 90 天</button>
+            <button id="historyRange365" class="secondary-button" type="button" data-i18n="history.range_365">最近 365 天</button>
+          </div>
+          <figure class="trend-figure" aria-labelledby="trendTitle" aria-describedby="trendSummary">
+            <figcaption id="trendTitle" data-i18n="history.trend_title">每日用量趨勢</figcaption>
+            <p id="trendSummary" class="help" data-i18n="history.trend_empty">同步後會顯示可存取的每日趨勢。</p>
+            <svg id="historyTrend" class="trend-chart" viewBox="0 0 960 260" role="img" aria-labelledby="trendSvgTitle trendSvgDescription"></svg>
+            <ul id="trendLegend" class="trend-legend" aria-label="Legend"></ul>
+          </figure>
+          <p id="historyStatus" class="help" data-i18n="history.empty">同步資料後，這裡會顯示依 UTC 日期彙總的歷史。</p>
+          <div class="table-wrap">
+            <table><thead><tr><th data-i18n="history.date">日期</th><th data-i18n="history.project">專案</th><th data-i18n="history.group">額度群組</th><th data-i18n="history.tokens">Token</th><th data-i18n="history.completeness">完整性</th></tr></thead><tbody id="historyRows"></tbody></table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" data-view="profiles" aria-labelledby="profilesTitle" hidden>
+        <div class="view-heading"><div><p class="eyebrow">Local profiles</p><h2 id="profilesTitle" data-i18n="profiles.title">組織設定檔</h2></div><button id="addProfile" class="primary-button" type="button" data-i18n="profile.add">新增設定檔</button></div>
+        <p class="page-copy" data-i18n="profiles.description">每個設定檔使用獨立的系統安全憑證與資料範圍，不會跨組織混用。</p>
+        <div id="profileList" class="stack-list"><article class="card empty-state" data-i18n="profiles.empty">尚未建立設定檔。你仍可在儀表板進行不保存 Key 的單次查詢。</article></div>
+      </section>
+
+      <section class="view" data-view="alerts" aria-labelledby="alertsTitle" hidden>
+        <div class="view-heading"><div><p class="eyebrow">Threshold rules</p><h2 id="alertsTitle" data-i18n="alerts.title">額度通知</h2></div><button id="addAlert" class="primary-button" type="button" data-i18n="alerts.add">新增規則</button></div>
+        <p class="page-copy" data-i18n="alerts.description">通知只在新跨越門檻且資料仍新鮮時送出；重新啟動或重複同步不會洗版。</p>
+        <div id="alertList" class="stack-list"><article class="card empty-state" data-i18n="alerts.empty">目前沒有通知規則。</article></div>
+        <section class="card" aria-labelledby="notificationHistoryTitle">
+          <div class="section-heading">
+            <h3 id="notificationHistoryTitle" data-i18n="notification.history_title">通知紀錄</h3>
+            <button id="testNotification" class="secondary-button" type="button" data-i18n="notification.test">傳送測試通知</button>
+          </div>
+          <p class="help" data-i18n="notification.test_privacy">測試通知使用通用文字，不包含設定檔名稱或認證資訊。</p>
+          <p id="notificationHistoryStatus" class="help" role="status" aria-live="polite" data-i18n="notification.history_empty">尚無通知紀錄。</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th data-i18n="notification.time">時間</th><th data-i18n="notification.kind">類型</th><th data-i18n="notification.scope">範圍</th><th data-i18n="notification.delivery">結果</th></tr></thead>
+              <tbody id="notificationHistoryRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" data-view="settings" aria-labelledby="settingsTitle" hidden>
+        <div class="view-heading"><div><p class="eyebrow">Config schema v1</p><h2 id="settingsTitle" data-i18n="settings.title">應用程式設定</h2></div><span id="configSource" class="pill">—</span></div>
+        <form id="settingsForm" class="settings-layout">
+          <section class="card settings-section">
+            <h3 data-i18n="settings.general">一般</h3>
+            <label class="field" for="settingLanguage"><span data-i18n="settings.language">顯示語言</span><select id="settingLanguage"><option value="zh-TW">繁體中文</option><option value="en">English</option></select></label>
+            <label class="check-field"><input id="openBrowser" type="checkbox"><span data-i18n="settings.open_browser">啟動時開啟瀏覽器</span></label>
+            <label class="field" for="requestTimeout"><span data-i18n="settings.timeout">要求逾時（秒）</span><input id="requestTimeout" type="number" min="5" max="300" required></label>
+          </section>
+          <section class="card settings-section">
+            <h3 data-i18n="settings.monitoring">監控</h3>
+            <label class="check-field"><input id="monitoringEnabled" type="checkbox"><span data-i18n="settings.monitoring_enabled">啟用背景監控</span></label>
+            <label class="field" for="monitoringInterval"><span data-i18n="settings.interval">同步間隔（秒）</span><input id="monitoringInterval" type="number" min="300" required></label>
+            <label class="field" for="freshnessThreshold"><span data-i18n="settings.freshness">資料新鮮度上限（秒）</span><input id="freshnessThreshold" type="number" min="300" required></label>
+            <label class="check-field"><input id="startupEnabled" type="checkbox"><span data-i18n="settings.startup">登入時自動啟動</span></label>
+          </section>
+          <section class="card settings-section">
+            <h3 data-i18n="settings.updates">更新與資料</h3>
+            <label class="field" for="updateChannel"><span data-i18n="settings.channel">更新頻道</span><select id="updateChannel"><option value="stable">Stable</option><option value="beta">Beta</option></select></label>
+            <label class="check-field"><input id="checkOnStart" type="checkbox"><span data-i18n="settings.check_on_start">啟動時檢查更新</span></label>
+            <label class="field" for="retentionDays"><span data-i18n="settings.retention">歷史保留天數（留空表示永久）</span><input id="retentionDays" type="number" min="1" max="3650"></label>
+            <div class="retention-panel">
+              <button id="previewRetention" class="secondary-button" type="button" data-i18n="retention.preview">預覽清理</button>
+              <button id="applyRetention" class="danger-button" type="button" data-i18n="retention.apply" hidden>確認刪除</button>
+              <p id="retentionStatus" class="help" role="status" aria-live="polite" data-i18n="retention.default_safe">不會自動刪除資料；必須先預覽並再次確認。</p>
+            </div>
+            <div class="update-panel" aria-labelledby="updateStatus">
+              <div class="actions">
+                <button id="checkUpdate" class="secondary-button" type="button" data-i18n="update.check">檢查更新</button>
+                <button id="downloadUpdate" class="secondary-button" type="button" data-i18n="update.download" hidden>下載更新</button>
+                <button id="installUpdate" class="primary-button" type="button" data-i18n="update.install" hidden>安裝更新</button>
+                <button id="resumeUpdate" class="secondary-button" type="button" data-i18n="update.resume" hidden>恢復更新</button>
+              </div>
+              <p id="updateStatus" class="help" role="status" aria-live="polite"></p>
+              <div id="updateProgressWrap" class="update-progress" hidden>
+                <label for="updateProgress" data-i18n="update.progress_label">更新進度</label>
+                <progress id="updateProgress" max="100" value="0"></progress>
+                <span id="updateProgressText" class="help"></span>
+              </div>
+              <a id="releaseNotes" class="safe-link" target="_blank" rel="noopener noreferrer" data-i18n="update.release_notes" hidden>版本說明</a>
+            </div>
+            <div class="actions"><button id="integrityCheck" class="secondary-button" type="button" data-i18n="operations.integrity">檢查資料庫</button><button id="createBackup" class="secondary-button" type="button" data-i18n="operations.backup">建立備份</button></div>
+            <p id="operationsStatus" class="help" aria-live="polite"></p>
+          </section>
+          <section class="card settings-section full-width">
+            <h3 data-i18n="settings.diagnostics">設定診斷</h3>
+            <p class="help"><span data-i18n="settings.config_path">設定檔位置</span>: <code id="configPath">—</code></p>
+            <p id="configWarning" class="warning-text" hidden></p>
+            <div class="reset-panel">
+              <div class="actions">
+                <button id="previewConfigDefaults" class="secondary-button" type="button" data-i18n="settings.reset_preview_action">預覽恢復預設</button>
+                <button id="applyConfigDefaults" class="danger-button" type="button" data-i18n="settings.reset_apply" hidden>確認恢復預設</button>
+              </div>
+              <p id="configResetStatus" class="help" role="status" aria-live="polite" data-i18n="settings.reset_safe_scope">只重設畫面中的非敏感設定；設定檔選擇、認證與歷史資料不受影響。</p>
+            </div>
+            <div class="form-footer"><span id="settingsStatus" class="help" role="status" aria-live="polite"></span><button id="saveSettings" class="primary-button" type="submit" data-i18n="common.save">儲存</button></div>
+          </section>
+        </form>
+      </section>
+
+      <footer data-i18n="app.footer">本工具為非官方專案。所有額度日期以 UTC 歸屬；請以 OpenAI 官方帳務資料為準。</footer>
+    </main>
+  </div>
+  <dialog id="profileDialog" aria-labelledby="profileDialogTitle">
+    <form id="profileForm" class="dialog-form">
+      <div class="section-heading"><h2 id="profileDialogTitle" data-i18n="profile.add">新增設定檔</h2><button class="text-button dialog-close" type="button" data-close-dialog="profileDialog" data-i18n="common.close">關閉</button></div>
+      <p class="help" data-i18n="profiles.credential_notice">Key 驗證成功後只會存入作業系統安全憑證服務；本應用程式只保存 opaque reference。</p>
+      <label class="field" for="profileName"><span data-i18n="profile.display_name">設定檔名稱</span><input id="profileName" maxlength="120" autocomplete="off" required></label>
+      <label class="field" for="profileKey"><span data-i18n="profile.credential">管理員 API 金鑰</span><input id="profileKey" type="password" placeholder="sk-admin-…" autocomplete="off" autocapitalize="none" spellcheck="false" required></label>
+      <p id="profileFormStatus" class="warning-text" role="status" aria-live="polite"></p>
+      <div class="form-footer"><button class="secondary-button" type="button" data-close-dialog="profileDialog" data-i18n="common.cancel">取消</button><button id="saveProfile" class="primary-button" type="submit" data-i18n="profile.create_securely">驗證並安全建立</button></div>
+    </form>
+  </dialog>
+  <dialog id="alertDialog" aria-labelledby="alertDialogTitle">
+    <form id="alertForm" class="dialog-form">
+      <div class="section-heading"><h2 id="alertDialogTitle" data-i18n="alerts.add">新增規則</h2><button class="text-button dialog-close" type="button" data-close-dialog="alertDialog" data-i18n="common.close">關閉</button></div>
+      <label class="field" for="alertGroup"><span data-i18n="history.group">額度群組</span><select id="alertGroup"><option value="standard">Standard</option><option value="mini">Mini / Nano</option></select></label>
+      <label class="field" for="alertThreshold"><span data-i18n="alerts.threshold">門檻百分比</span><input id="alertThreshold" type="number" min="1" max="100" value="80" required></label>
+      <label class="field" for="alertProject"><span data-i18n="history.project">專案</span><select id="alertProject"><option value="all" data-i18n="history.all_projects">所有專案</option></select></label>
+      <p id="alertFormStatus" class="warning-text" role="status" aria-live="polite"></p>
+      <div class="form-footer"><button class="secondary-button" type="button" data-close-dialog="alertDialog" data-i18n="common.cancel">取消</button><button id="saveAlert" class="primary-button" type="submit" data-i18n="common.save">儲存</button></div>
+    </form>
+  </dialog>
   <script src="js/domain.js"></script>
   <script src="js/app.js"></script>
 </body>

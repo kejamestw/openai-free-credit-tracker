@@ -3,12 +3,33 @@ import re
 import socket
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .version import __version__
 
 BASE_URL = "https://api.openai.com/v1"
 ADMIN_KEY_PATTERN = re.compile(r"sk-admin-[A-Za-z0-9_-]{8,}\Z", re.ASCII)
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+ALLOWED_PATHS = frozenset(
+    {
+        "/organization/usage/completions",
+        "/organization/costs",
+    }
+)
+
+
+class RejectRedirectHandler(HTTPRedirectHandler):
+    """Never replay the Admin authorization header to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise HTTPError(newurl, code, "upstream redirect rejected", headers, fp)
+
+
+_OPENER = build_opener(RejectRedirectHandler())
+
+
+def _open(request: Request, *, timeout: int):
+    return _OPENER.open(request, timeout=timeout)
 
 
 class OpenAIClientError(Exception):
@@ -62,6 +83,8 @@ class OpenAIAdminClient:
         self.timeout = timeout
 
     def get(self, path: str, params: dict) -> dict:
+        if path not in ALLOWED_PATHS:
+            raise ValueError("upstream API path is not allowlisted")
         url = f"{BASE_URL}{path}?{urlencode(params, doseq=True)}"
         request = Request(
             url,
@@ -72,9 +95,22 @@ class OpenAIAdminClient:
             },
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
-                payload = json.loads(response.read())
+            with _open(request, timeout=self.timeout) as response:
+                raw = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(raw) > MAX_RESPONSE_BYTES:
+                    raise OpenAIClientError(
+                        "upstream_response_too_large",
+                        "OpenAI returned more data than this version can safely process.",
+                        502,
+                    )
+                payload = json.loads(raw)
         except HTTPError as exc:
+            if 300 <= exc.code <= 399:
+                raise OpenAIClientError(
+                    "upstream_redirect_rejected",
+                    "OpenAI returned an unexpected redirect; the request was stopped.",
+                    502,
+                ) from None
             mapped = HTTP_ERROR_MAP.get(exc.code)
             if mapped:
                 raise OpenAIClientError(*mapped) from None

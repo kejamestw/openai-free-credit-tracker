@@ -1,0 +1,8 @@
+{
+  "tampered": {"mutate_after_sign": "version"},
+  "redirect": {"final_host": "evil.example"},
+  "oversize": {"announced_size": 8, "signed_size": 7},
+  "hash": {"body": "changed", "signed_sha256_source": "release"},
+  "disk": {"free_bytes": 6, "required_bytes": 7},
+  "crash_rollback": {"crash_state": "installing", "expected": "rolled-back"}
+}

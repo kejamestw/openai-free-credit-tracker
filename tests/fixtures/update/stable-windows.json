@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "channel": "stable",
+  "version": "0.3.0",
+  "published_at": "2026-08-01T00:00:00Z",
+  "expires_at": "2099-12-01T00:00:00Z",
+  "minimum_updater_version": "0.2.0",
+  "critical": false,
+  "artifacts": [
+    {
+      "os": "windows",
+      "arch": "x86_64",
+      "format": "portable",
+      "url": "https://downloads.example.com/releases/tracker.exe",
+      "size": 7,
+      "sha256": "a4d451ec23463726f72c43d64c710968f6b602cd653b4de8adee1b556240a829"
+    }
+  ],
+  "release_notes_url": "https://releases.example.com/v0.3.0",
+  "signature": "",
+  "key_id": "fixture-key"
+}

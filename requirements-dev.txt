@@ -1,2 +1,6 @@
 pytest>=8.0
 pyinstaller>=6.0
+pip-audit>=2.10
+cyclonedx-bom>=7.0
+cryptography>=43.0
+truststore>=0.10.0

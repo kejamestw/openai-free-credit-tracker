@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "ui": {
+    "language": "zh-TW",
+    "open_browser_on_start": true
+  },
+  "network": {
+    "request_timeout_seconds": 75
+  },
+  "updates": {
+    "channel": "beta",
+    "check_on_start": false
+  },
+  "history": {
+    "retention_days": 365
+  },
+  "monitoring": {
+    "enabled": true,
+    "interval_seconds": 900,
+    "freshness_threshold_seconds": 1800
+  },
+  "startup": {
+    "enabled": true
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "ui": {
+    "language": "zh-TW",
+    "open_browser_on_start": false
+  },
+  "network": {
+    "request_timeout_seconds": 45
+  },
+  "updates": {
+    "channel": "stable",
+    "check_on_start": true
+  }
+}

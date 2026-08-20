@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-01-03T00:00:00Z",
+  "filters": {
+    "profile_id": "prof_00000000000000000000000000000000",
+    "start_utc": "2026-01-01T00:00:00Z",
+    "end_utc": "2026-01-02T00:00:00Z",
+    "project_key": null,
+    "project_id_policy": "mask"
+  },
+  "time_zone": "UTC",
+  "records": [
+    {
+      "schema_version": 1,
+      "profile_id": "prof_00000000000000000000000000000000",
+      "bucket_start_utc": "2026-01-01T00:00:00Z",
+      "bucket_end_utc": "2026-01-01T01:00:00Z",
+      "project_key": "project-5e9f27e9721094cfa0d7077e",
+      "project_name": "=SUM(1,1) 專案",
+      "project_id": "proj_…C123",
+      "model": "gpt-5.4-mini-2026-03-17",
+      "service_tier": "incentivized-tier",
+      "input_tokens": 100,
+      "cached_input_tokens": 20,
+      "output_tokens": 10,
+      "total_tokens": 110,
+      "request_count": 2,
+      "catalog_version": "catalog-v1",
+      "collected_at": "2026-01-02T03:04:05Z"
+    }
+  ]
+}

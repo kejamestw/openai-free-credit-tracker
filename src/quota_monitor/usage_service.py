@@ -85,6 +85,7 @@ def summarize_usage(buckets: list, catalog: dict, start: int = 0, end: int = 0) 
     }
     other_usage = _empty_totals()
     list_price_estimate = 0.0
+    cache_write_tokens = 0
     unpriced_tokens = 0
     debug = []
 
@@ -105,12 +106,22 @@ def summarize_usage(buckets: list, catalog: dict, start: int = 0, end: int = 0) 
             entry = find_model(raw_name, catalog)
             input_tokens = _token_count(row, "input_tokens")
             cached_tokens = _token_count(row, "input_cached_tokens")
+            cache_write = _token_count(row, "input_cache_write_tokens")
             output_tokens = _token_count(row, "output_tokens")
             if cached_tokens > input_tokens:
                 raise UsageDataError("Usage API response has input_cached_tokens greater than input_tokens")
+            if cache_write > input_tokens:
+                raise UsageDataError(
+                    "Usage API response has input_cache_write_tokens greater than input_tokens"
+                )
+            cache_write_tokens += cache_write
             total = input_tokens + output_tokens
             free = is_incentivized(service_tier)
-            eligible_entry = entry if entry and entry.get("eligible", True) else None
+            eligible_entry = (
+                entry
+                if entry and entry.get("enabled", True) and entry.get("eligible", True)
+                else None
+            )
 
             if entry:
                 list_price_estimate += estimate_cost(
@@ -147,6 +158,8 @@ def summarize_usage(buckets: list, catalog: dict, start: int = 0, end: int = 0) 
         "other_tokens": other_usage["total"],
         "list_price_estimate_usd": list_price_estimate,
         "list_price": list_price_estimate,
+        "cache_write_tokens": cache_write_tokens,
+        "list_price_estimate_incomplete": cache_write_tokens > 0,
         "unpriced_tokens": unpriced_tokens,
         "start": start,
         "end": end,

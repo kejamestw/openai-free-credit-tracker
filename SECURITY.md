@@ -4,26 +4,28 @@
 
 | Version | Status |
 |---|---|
-| 0.1.x | Supported after an approved v0.1.0 release |
-| 0.1.0-alpha.x | Unsupported once v0.1.0 is released |
+| 1.0.x | Supported after an approved v1.0.0 stable release |
+| Release candidates / source snapshots | Testing only; not supported releases |
+| 0.x | Unsupported after v1.0.0 is released |
 
-The feature branch and unreleased build artifacts are development candidates, not supported releases.
+No source commit, workflow artifact, draft Release, or unsigned candidate becomes a supported release merely because it can be downloaded.
 
-## Reporting a vulnerability
+## Report a vulnerability
 
-Do not disclose vulnerability details, Admin API keys, project keys, sensitive response bodies, billing data, or organization identifiers in a public issue.
+Use **Report a vulnerability** on this repository's GitHub **Security** page. If private vulnerability reporting is unavailable, open a public issue containing no exploit or sensitive details and ask for a private contact channel.
 
-Use **Report a vulnerability** on the repository's GitHub **Security** page. If private vulnerability reporting is unavailable, open a public issue containing no sensitive or exploit details and ask the maintainers for a private contact channel.
-
-Include the affected version, operating system, minimal reproduction steps, impact, and whether a key may have been exposed. Revoke any potentially exposed key immediately; do not send the key itself.
+Include the affected version, operating system, minimal reproduction, impact, and whether a credential may have been exposed. Never send the credential, raw API response, billing data, database, export, Organization ID, or Project ID. Revoke a possibly exposed key immediately.
 
 ## Security properties
 
-- The local HTTP server binds only to `127.0.0.1`.
-- The Admin API key is held in memory only and is not intentionally persisted.
-- Keys never belong in URLs, logs, browser storage, configuration files, fixtures, or repository history.
-- Static file requests are constrained to the bundled web root.
-- Public error responses are sanitized and correlated by request ID.
-- Release artifacts are accompanied by SHA-256 checksums; v0.1.0 artifacts are not code-signed.
+- The local server binds only to a random IPv4 loopback port and validates exact Host/port, Origin, fetch-site, and path boundaries.
+- One-time Admin API Keys remain in request memory. Background keys can be stored only in Windows Credential Manager, macOS Keychain, or Linux Secret Service; no plaintext fallback exists.
+- Keys are prohibited from URLs, argv, logs, exceptions, notifications, config, SQLite, temp files, backups, exports, fixtures, and repository content.
+- Every profile scopes credentials, projects, usage, sync state, alert rules, notification history, and exports.
+- Config and database writes are atomic. Database migrations create a consistent checksummed backup and fail without destroying the previous database.
+- Update manifests use canonical JSON and Ed25519. Artifacts are bounded and verified by size/SHA-256 before staged installation, health checks, commit, or rollback.
+- CI uses least privilege, commit-pinned Actions, repository/history secret scans, dependency audit, and CycloneDX SBOM generation.
 
-See [docs/security.md](docs/security.md) for the full threat model, controls, limitations, and release checklist.
+These controls do not sandbox a hostile local administrator, privileged process, browser extension, or compromised OS credential service. Platform signing and notarization must be verified for each stable artifact.
+
+See [docs/en/security.md](docs/en/security.md), [docs/zh-TW/security.md](docs/zh-TW/security.md), and the full [threat model](docs/threat-model.md).

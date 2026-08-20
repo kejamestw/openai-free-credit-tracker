@@ -1,4 +1,4 @@
-"""Fail release checks on leaked key-shaped strings or corrupt tracked text."""
+"""Fail release checks on leaked key-shaped strings or corrupt repository text."""
 
 from __future__ import annotations
 
@@ -21,9 +21,23 @@ def git_bytes(*args: str) -> bytes:
     ).stdout
 
 
-def tracked_text_files() -> list[tuple[Path, bytes]]:
+def repository_text_files() -> list[tuple[Path, bytes]]:
+    """Return tracked and non-ignored untracked UTF-8 files.
+
+    Release CI normally sees a fully tracked checkout, while local candidate
+    audits often run before a commit. Including untracked, non-ignored files
+    prevents newly added fixtures or docs from bypassing the same scan.
+    """
+
     files: list[tuple[Path, bytes]] = []
-    for encoded_path in git_bytes("ls-files", "-z").split(b"\0"):
+    encoded_paths = git_bytes(
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    )
+    for encoded_path in encoded_paths.split(b"\0"):
         if not encoded_path:
             continue
         path = ROOT / encoded_path.decode("utf-8")
@@ -60,11 +74,14 @@ def audit_git_history() -> list[str]:
 
 
 def main() -> None:
-    files = tracked_text_files()
+    files = repository_text_files()
     findings = [*audit_tracked_text(files), *audit_git_history()]
     if findings:
         raise SystemExit("repository audit failed:\n- " + "\n- ".join(findings))
-    print(f"repository audit passed: {len(files)} tracked UTF-8 text files; history scanned")
+    print(
+        f"repository audit passed: {len(files)} tracked/untracked UTF-8 text files; "
+        "history scanned"
+    )
 
 
 if __name__ == "__main__":

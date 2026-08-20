@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "tools": {
+    "appimagetool-x86_64": {
+      "repository_commit": "8c8c91f762b412a19f4e8d2c4b35afb98f2d7c81",
+      "asset_id": 324406882,
+      "url": "https://api.github.com/repos/AppImage/appimagetool/releases/assets/324406882",
+      "size": 15092216,
+      "sha256": "a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0"
+    },
+    "runtime-x86_64": {
+      "repository_commit": "75849dce7cc37e4319b633df1f116ca895c71a12",
+      "asset_id": 456065460,
+      "url": "https://api.github.com/repos/AppImage/type2-runtime/releases/assets/456065460",
+      "size": 944632,
+      "sha256": "1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf"
+    }
+  }
+}

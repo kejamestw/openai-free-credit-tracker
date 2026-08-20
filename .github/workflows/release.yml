@@ -1,61 +1,227 @@
-name: Build Windows release
+name: Publish verified release
+
 on:
   push:
     tags: ["v*"]
+
 permissions:
+  actions: read
   contents: write
+
 jobs:
-  build:
-    runs-on: windows-latest
+  publish:
+    runs-on: ubuntu-22.04
+    environment: release-stable
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - uses: actions/setup-node@v4
-        with: { node-version: "22" }
-      - shell: pwsh
-        name: Require tag to match the package version
-        run: |
-          $env:PYTHONPATH = "src"
-          $packageVersion = python -c "from quota_monitor import __version__; print(__version__)"
-          if ($env:GITHUB_REF_NAME -ne "v$packageVersion") {
-            throw "Tag $env:GITHUB_REF_NAME does not match package version v$packageVersion"
-          }
-      - name: Run release gates
-        shell: pwsh
-        run: |
-          python -m pip install -e .
-          python -m pip install -r requirements-dev.txt
-          python scripts\validate_models.py
-          python scripts\audit_repository.py
-          python -m pytest -q
-          node --check web\js\domain.js
-          node --check web\js\app.js
-          node --test tests\frontend_domain.test.cjs
-      - name: Build and smoke-test the one-file executable
-        shell: cmd
-        run: scripts\build_windows.bat
-      - name: Verify packaged version and smoke test
-        shell: pwsh
-        run: |
-          $env:PYTHONPATH = "src"
-          $packageVersion = python -c "from quota_monitor import __version__; print(__version__)"
-          $versionOutput = & dist\OpenAI-Free-Credit-Tracker.exe --version
-          if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch " $([regex]::Escape($packageVersion))$") {
-            throw "Unexpected packaged version: $versionOutput"
-          }
-          & dist\OpenAI-Free-Credit-Tracker.exe --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw "Packaged smoke test failed" }
-      - shell: pwsh
-        name: Generate and verify checksum
-        run: |
-          $actual = (Get-FileHash dist\OpenAI-Free-Credit-Tracker.exe -Algorithm SHA256).Hash
-          "$actual  OpenAI-Free-Credit-Tracker.exe" | Set-Content -Encoding ascii dist\SHA256SUMS.txt
-          $expected = (Get-Content dist\SHA256SUMS.txt).Split()[0]
-          if ($actual -ne $expected) { throw "Generated checksum verification failed" }
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
         with:
-          files: |
-            dist/OpenAI-Free-Credit-Tracker.exe
-            dist/SHA256SUMS.txt
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.13.13"
+      - name: Install update-manifest verification dependencies
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Require tag to match the package version
+        run: |
+          version="$(PYTHONPATH=src python -c 'from quota_monitor import __version__; print(__version__)')"
+          test "$GITHUB_REF_NAME" = "v$version"
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+          if [[ "$version" == *-* ]]; then
+            echo "RELEASE_CHANNEL=beta" >> "$GITHUB_ENV"
+            echo "CHANNEL_MANIFEST_NAME=OpenAI-Free-Credit-Tracker-beta-update-manifest.json" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_CHANNEL=stable" >> "$GITHUB_ENV"
+            echo "CHANNEL_MANIFEST_NAME=OpenAI-Free-Credit-Tracker-stable-update-manifest.json" >> "$GITHUB_ENV"
+          fi
+      - name: Download the successful candidate built from this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $artifactName = "release-$env:RELEASE_CHANNEL-$env:GITHUB_SHA"
+          $response = gh api "/repos/$env:GITHUB_REPOSITORY/actions/workflows/release-candidate.yml/runs?event=workflow_dispatch&status=success&head_sha=$env:GITHUB_SHA&per_page=100" | ConvertFrom-Json
+          $runId = $null
+          foreach ($run in $response.workflow_runs) {
+            $artifacts = gh api "/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/artifacts" | ConvertFrom-Json
+            if ($artifacts.artifacts.name -contains $artifactName) {
+              $runId = $run.id
+              break
+            }
+          }
+          if (-not $runId) { throw "No successful release candidate exists for commit $env:GITHUB_SHA" }
+          New-Item -ItemType Directory -Force dist/release-artifacts | Out-Null
+          gh run download $runId --name $artifactName --dir dist/release-artifacts
+      - name: Verify signed candidate, checksums, source commit, and tag
+        run: |
+          python scripts/release_metadata.py verify --directory dist/release-artifacts --version "$PACKAGE_VERSION" --source-commit "$GITHUB_SHA" --channel "$RELEASE_CHANNEL" --tag "$GITHUB_REF_NAME"
+      - name: Independently verify Ed25519 and Linux OpenPGP signatures
+        env:
+          UPDATE_SIGNING_KEY_ID: ${{ secrets.UPDATE_SIGNING_KEY_ID }}
+          UPDATE_SIGNING_PUBLIC_KEY_B64: ${{ secrets.UPDATE_SIGNING_PUBLIC_KEY_B64 }}
+          UPDATE_TRUST_PUBLIC_KEYS_JSON: ${{ secrets.UPDATE_TRUST_PUBLIC_KEYS_JSON }}
+          LINUX_GPG_PUBLIC_KEY_B64: ${{ secrets.LINUX_GPG_PUBLIC_KEY_B64 }}
+          LINUX_GPG_KEY_FINGERPRINT: ${{ secrets.LINUX_GPG_KEY_FINGERPRINT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$UPDATE_SIGNING_KEY_ID" || -z "$UPDATE_SIGNING_PUBLIC_KEY_B64" || -z "$LINUX_GPG_PUBLIC_KEY_B64" || -z "$LINUX_GPG_KEY_FINGERPRINT" ]]; then
+            echo "signed publication requires protected update and Linux verification keys" >&2
+            exit 1
+          fi
+          export OAI_UPDATE_PUBLIC_KEYS_JSON
+          if [[ -n "$UPDATE_TRUST_PUBLIC_KEYS_JSON" ]]; then
+            OAI_UPDATE_PUBLIC_KEYS_JSON="$UPDATE_TRUST_PUBLIC_KEYS_JSON"
+          else
+            OAI_UPDATE_PUBLIC_KEYS_JSON="$(python -c 'import json, os; print(json.dumps({os.environ["UPDATE_SIGNING_KEY_ID"]: os.environ["UPDATE_SIGNING_PUBLIC_KEY_B64"]}))')"
+          fi
+          python scripts/sign_artifact_manifest.py verify --input dist/release-artifacts/artifact-manifest.json
+          python scripts/update_manifest_cli.py verify --input "dist/release-artifacts/OpenAI-Free-Credit-Tracker-${PACKAGE_VERSION}-update-manifest.json" --artifact-host github.com --release-notes-host github.com
+          cmp -- "dist/release-artifacts/OpenAI-Free-Credit-Tracker-${PACKAGE_VERSION}-update-manifest.json" "dist/release-artifacts/${CHANNEL_MANIFEST_NAME}"
+          python scripts/update_manifest_cli.py verify --input "dist/release-artifacts/${CHANNEL_MANIFEST_NAME}" --artifact-host github.com --release-notes-host github.com
+          export GNUPGHOME="$RUNNER_TEMP/release-public-gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          printf '%s' "$LINUX_GPG_PUBLIC_KEY_B64" | base64 --decode | gpg --batch --quiet --import
+          expected="$(printf '%s' "$LINUX_GPG_KEY_FINGERPRINT" | tr '[:lower:]' '[:upper:]')"
+          actual="$(gpg --batch --with-colons --list-keys "$expected" | awk -F: '$1 == "fpr" { print $10; exit }')"
+          if [[ "$actual" != "$expected" ]]; then echo "Linux public-key fingerprint mismatch" >&2; exit 1; fi
+          for artifact in dist/release-artifacts/*.tar.gz dist/release-artifacts/*.AppImage; do
+            gpg --batch --verify "$artifact.asc" "$artifact"
+          done
+          [[ "$GNUPGHOME" == "$RUNNER_TEMP/"* ]] || exit 1
+          rm -rf -- "$GNUPGHOME"
+      - name: Create or verify the immutable GitHub Release without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $candidateFiles = @(Get-ChildItem -File dist/release-artifacts)
+          $candidateNames = @($candidateFiles | ForEach-Object { $_.Name })
+          $releaseEndpoint = "/repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME"
+          $releaseOutput = gh api $releaseEndpoint 2>&1
+          $releaseExit = $LASTEXITCODE
+          $release = $null
+          if ($releaseExit -eq 0) {
+            $release = (($releaseOutput | ForEach-Object { $_.ToString() }) -join "`n") | ConvertFrom-Json
+          } elseif ((($releaseOutput | ForEach-Object { $_.ToString() }) -join "`n") -notmatch "HTTP 404|Not Found") {
+            throw "Could not determine whether the GitHub Release already exists"
+          }
+
+          $expectPrerelease = $env:RELEASE_CHANNEL -eq "beta"
+          if ($release) {
+            if ($release.tag_name -ne $env:GITHUB_REF_NAME -or [bool]$release.prerelease -ne $expectPrerelease) {
+              throw "Existing GitHub Release metadata does not match this signed candidate"
+            }
+          } else {
+            if ($expectPrerelease) {
+              gh release create $env:GITHUB_REF_NAME --verify-tag --generate-notes --draft --prerelease --title "OpenAI Free Credit Tracker $env:PACKAGE_VERSION"
+            } else {
+              gh release create $env:GITHUB_REF_NAME --verify-tag --generate-notes --draft --title "OpenAI Free Credit Tracker $env:PACKAGE_VERSION"
+            }
+            if ($LASTEXITCODE -ne 0) { throw "GitHub draft Release creation failed" }
+            $release = [pscustomobject]@{ draft = $true; assets = @() }
+          }
+
+          $existingNames = @($release.assets | ForEach-Object { $_.name })
+          $extraNames = @($existingNames | Where-Object { $candidateNames -notcontains $_ })
+          $missingNames = @($candidateNames | Where-Object { $existingNames -notcontains $_ })
+          if ($extraNames.Count -gt 0) { throw "Existing GitHub Release contains unexpected assets" }
+          if (-not $release.draft -and $missingNames.Count -gt 0) {
+            throw "Published GitHub Release is incomplete and cannot be mutated"
+          }
+
+          if ($existingNames.Count -gt 0) {
+            $existingDirectory = "build/existing-release-assets"
+            New-Item -ItemType Directory -Force $existingDirectory | Out-Null
+            gh release download $env:GITHUB_REF_NAME --dir $existingDirectory
+            if ($LASTEXITCODE -ne 0) { throw "Existing GitHub Release assets could not be downloaded" }
+            python scripts/verify_release_reuse.py --candidate dist/release-artifacts --published $existingDirectory --allow-published-subset
+            if ($LASTEXITCODE -ne 0) { throw "Existing GitHub Release asset bytes differ from the signed candidate" }
+          }
+
+          if ($release.draft) {
+            foreach ($name in $missingNames) {
+              $path = ($candidateFiles | Where-Object Name -eq $name).FullName
+              gh release upload $env:GITHUB_REF_NAME $path
+              if ($LASTEXITCODE -ne 0) { throw "Draft asset upload failed without replacing existing bytes: $name" }
+            }
+          }
+
+          $completeDirectory = "build/complete-release-assets"
+          New-Item -ItemType Directory -Force $completeDirectory | Out-Null
+          gh release download $env:GITHUB_REF_NAME --dir $completeDirectory
+          if ($LASTEXITCODE -ne 0) { throw "Complete GitHub Release assets could not be downloaded" }
+          python scripts/verify_release_reuse.py --candidate dist/release-artifacts --published $completeDirectory
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release is not byte-identical to the signed candidate" }
+
+          if ($release.draft) {
+            if ($expectPrerelease) {
+              gh release edit $env:GITHUB_REF_NAME --draft=false --prerelease
+            } else {
+              gh release edit $env:GITHUB_REF_NAME --draft=false --prerelease=false
+            }
+            if ($LASTEXITCODE -ne 0) { throw "Verified draft Release could not be published" }
+          }
+      - name: Promote the exact signed manifest to the monotonic beta channel pointer
+        if: env.RELEASE_CHANNEL == 'beta'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_SIGNING_KEY_ID: ${{ secrets.UPDATE_SIGNING_KEY_ID }}
+          UPDATE_SIGNING_PUBLIC_KEY_B64: ${{ secrets.UPDATE_SIGNING_PUBLIC_KEY_B64 }}
+          UPDATE_TRUST_PUBLIC_KEYS_JSON: ${{ secrets.UPDATE_TRUST_PUBLIC_KEYS_JSON }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $branch = "update-channels"
+          $endpoint = "/repos/$env:GITHUB_REPOSITORY/contents/beta.json"
+          gh api "/repos/$env:GITHUB_REPOSITORY/git/ref/heads/$branch" --silent 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh api --method POST "/repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/heads/$branch" -f "sha=$env:GITHUB_SHA" --silent
+            if ($LASTEXITCODE -ne 0) { throw "Could not create the beta update-channel branch" }
+          }
+
+          $existingText = gh api "${endpoint}?ref=$branch" 2>$null
+          $existing = $null
+          if ($LASTEXITCODE -eq 0) { $existing = $existingText | ConvertFrom-Json }
+          $candidate = "dist/release-artifacts/$env:CHANNEL_MANIFEST_NAME"
+          $keyring = @{}
+          if ($env:UPDATE_TRUST_PUBLIC_KEYS_JSON) {
+            $keyring = $env:UPDATE_TRUST_PUBLIC_KEYS_JSON | ConvertFrom-Json -AsHashtable
+          } else {
+            $keyring[$env:UPDATE_SIGNING_KEY_ID] = $env:UPDATE_SIGNING_PUBLIC_KEY_B64
+          }
+          $env:OAI_UPDATE_PUBLIC_KEYS_JSON = ($keyring | ConvertTo-Json -Compress)
+          python scripts/update_manifest_cli.py verify --input $candidate --artifact-host github.com --release-notes-host github.com
+          if ($LASTEXITCODE -ne 0) { throw "Candidate beta manifest verification failed" }
+
+          $promotionArgs = @("scripts/validate_channel_promotion.py", "--candidate", $candidate)
+          $alreadyPromoted = $false
+          if ($existing) {
+            $current = Join-Path $env:RUNNER_TEMP "current-beta-manifest.json"
+            [IO.File]::WriteAllBytes($current, [Convert]::FromBase64String($existing.content))
+            python scripts/update_manifest_cli.py verify --input $current --artifact-host github.com --release-notes-host github.com
+            if ($LASTEXITCODE -ne 0) { throw "Current beta manifest verification failed" }
+            $promotionArgs += @("--current", $current)
+            $alreadyPromoted = (
+              [Convert]::ToBase64String([IO.File]::ReadAllBytes($current)) -ceq
+              [Convert]::ToBase64String([IO.File]::ReadAllBytes($candidate))
+            )
+          }
+          python @promotionArgs
+          if ($LASTEXITCODE -ne 0) { throw "Beta channel promotion is not monotonic" }
+          if ($alreadyPromoted) {
+            Write-Host "Beta channel already contains these exact signed manifest bytes"
+            exit 0
+          }
+
+          $body = @{
+            message = "Promote signed beta update channel to $env:PACKAGE_VERSION"
+            content = [Convert]::ToBase64String([IO.File]::ReadAllBytes($candidate))
+            branch = $branch
+          }
+          if ($existing) { $body.sha = $existing.sha }
+          $bodyPath = Join-Path $env:RUNNER_TEMP "beta-channel-update.json"
+          [IO.File]::WriteAllText($bodyPath, ($body | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+          gh api --method PUT $endpoint --input $bodyPath --silent
+          if ($LASTEXITCODE -ne 0) { throw "Beta channel pointer publication failed" }

@@ -1,0 +1,12 @@
+{
+  "usage": {
+    "input_cache_write_tokens": 2048,
+    "list_price_estimate_incomplete": true,
+    "list_price_estimate_usd": 0.01
+  },
+  "costs": {
+    "available": true,
+    "actual_usd": 0.02,
+    "error": null
+  }
+}

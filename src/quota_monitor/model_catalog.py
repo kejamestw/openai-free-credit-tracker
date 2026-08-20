@@ -1,7 +1,10 @@
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+
+from .catalog_schema import CatalogValidationError, validate_catalog
 
 DATE_SUFFIX = re.compile(r"-20\d{2}-\d{2}-\d{2}$")
 
@@ -18,9 +21,41 @@ def resource_path(*parts: str) -> Path:
     return resource_root().joinpath(*parts)
 
 
+@dataclass(frozen=True)
+class CatalogLoadResult:
+    catalog: dict
+    used_fallback: bool = False
+    warning_code: str | None = None
+
+
+def _read_catalog(path: Path) -> dict:
+    try:
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CatalogValidationError("catalog could not be read") from exc
+    validate_catalog(catalog)
+    return catalog
+
+
+def load_catalog_status(path: Path | None = None) -> CatalogLoadResult:
+    """Load a catalog and safely fall back to the bundled last-known-good copy."""
+
+    bundled_path = resource_path("data", "models.json")
+    catalog_path = path or bundled_path
+    try:
+        return CatalogLoadResult(_read_catalog(catalog_path))
+    except CatalogValidationError:
+        if path is None or catalog_path.resolve() == bundled_path.resolve():
+            raise
+        return CatalogLoadResult(
+            _read_catalog(bundled_path),
+            used_fallback=True,
+            warning_code="catalog_fallback",
+        )
+
+
 def load_catalog(path: Path | None = None) -> dict:
-    catalog_path = path or resource_path("data", "models.json")
-    return json.loads(catalog_path.read_text(encoding="utf-8"))
+    return load_catalog_status(path).catalog
 
 
 def clean_model_name(name: str) -> str:

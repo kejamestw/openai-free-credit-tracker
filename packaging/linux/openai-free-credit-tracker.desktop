@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OpenAI Free Credit Tracker
+Comment=Local-first OpenAI usage and credit dashboard
+Exec=OpenAI-Free-Credit-Tracker
+Icon=openai-free-credit-tracker
+Categories=Utility;
+Terminal=false

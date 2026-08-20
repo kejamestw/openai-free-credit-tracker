@@ -10,11 +10,15 @@ __pycache__/
 venv/
 build/
 dist/
+.tmp/
 *.spec
 *.egg-info/
 *.log
 openai_usage_debug*.json
 openai_daily_usage*.json
+# Generated only inside protected signed-release jobs. Never commit a release
+# trust root (or a development/fake equivalent) to the source tree.
+data/update-trust.json
 .vscode/
 .idea/
 .agent/

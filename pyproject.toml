@@ -12,13 +12,24 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "柯佩廷" }]
 keywords = ["openai", "quota", "usage", "dashboard", "local-first"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
+]
+dependencies = [
+  "cryptography>=43.0",
+]
+
+[project.optional-dependencies]
+desktop = [
+  "desktop-notifier>=6.2,<7",
+  "Pillow>=10.4",
+  "pystray>=0.19.5,<0.20",
 ]
 
 [project.scripts]
 openai-free-credit-tracker = "quota_monitor.app:main"
+openai-free-credit-tracker-manifest = "quota_monitor.update_cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -32,3 +43,6 @@ version = { attr = "quota_monitor.version.__version__" }
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "native_desktop: opt-in tests that interact with the current OS desktop services",
+]

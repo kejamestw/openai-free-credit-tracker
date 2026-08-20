@@ -1,0 +1,46 @@
+{
+  "fixture_contract": "unpublished-pre-v1-upgrade-matrix",
+  "publication_note": "These are repository contract snapshots, not claims of released tags.",
+  "entries": [
+    {
+      "contract_id": "v0.2-contract",
+      "config_fixture": "config-v0.2.json",
+      "database_fixture": "schema-v0-empty.sql",
+      "database_schema": 0,
+      "database_lineage": "pre-persistence",
+      "expected_language": "zh-TW",
+      "expected_timeout_seconds": 45,
+      "expected_input_tokens": 0
+    },
+    {
+      "contract_id": "v0.3-contract",
+      "config_fixture": "config-v0.3.json",
+      "database_fixture": "../schema_v1_snapshot.sql",
+      "database_schema": 1,
+      "database_lineage": "schema-v1-shared-with-v0.4",
+      "expected_language": "en",
+      "expected_timeout_seconds": 60,
+      "expected_input_tokens": 100
+    },
+    {
+      "contract_id": "v0.4-contract",
+      "config_fixture": "config-v0.4.json",
+      "database_fixture": "../schema_v1_snapshot.sql",
+      "database_schema": 1,
+      "database_lineage": "schema-v1-shared-with-v0.3",
+      "expected_language": "zh-TW",
+      "expected_timeout_seconds": 75,
+      "expected_input_tokens": 100
+    },
+    {
+      "contract_id": "v0.5-contract",
+      "config_fixture": "config-v0.5.json",
+      "database_fixture": "schema-v2-snapshot.sql",
+      "database_schema": 2,
+      "database_lineage": "schema-v2",
+      "expected_language": "en",
+      "expected_timeout_seconds": 90,
+      "expected_input_tokens": 250
+    }
+  ]
+}

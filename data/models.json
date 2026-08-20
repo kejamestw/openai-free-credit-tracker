@@ -1,8 +1,30 @@
 {
   "schema_version": 1,
-  "last_updated": "2026-07-31",
+  "catalog_version": "2026.08.19.1",
+  "effective_from": "2026-08-19",
+  "last_verified": "2026-08-19",
+  "last_updated": "2026-08-19",
   "currency": "USD",
   "price_unit": "per_1m_tokens",
+  "sources": {
+    "openai_pricing": {
+      "kind": "first_party",
+      "url": "https://developers.openai.com/api/docs/pricing",
+      "last_verified": "2026-08-19"
+    },
+    "project_eligibility_policy": {
+      "kind": "project_policy",
+      "url": null,
+      "last_verified": "2026-08-19",
+      "note": "Eligibility is maintained by this project and must be confirmed against the organization's current program terms."
+    },
+    "project_quota_policy": {
+      "kind": "project_policy",
+      "url": null,
+      "last_verified": "2026-08-19",
+      "note": "Daily quota values are project-maintained assumptions, not pricing-page facts."
+    }
+  },
   "cost_levels": {
     "sample_input_tokens": 1000,
     "sample_output_tokens": 1000,
@@ -13,110 +35,160 @@
     "standard": {
       "label": "高階模型群組",
       "daily_quota_tier_1_2": 250000,
+      "quota_source": "project_quota_policy",
       "models": [
         {
           "id": "gpt-5.6-sol",
           "aliases": [],
+          "enabled": true,
           "eligible": true,
+          "effective_from": "2026-07-31",
+          "effective_until": null,
           "pricing": {
             "input": 5,
             "cached_input": 0.5,
             "output": 30
           },
-          "source": "https://developers.openai.com/api/docs/pricing"
+          "source_refs": {
+            "pricing": "openai_pricing",
+            "eligibility": "project_eligibility_policy"
+          }
         },
         {
           "id": "gpt-5.5",
           "aliases": [
             "gpt-5.5-2026-04-23"
           ],
+          "enabled": true,
           "eligible": true,
+          "effective_from": "2026-07-31",
+          "effective_until": null,
           "pricing": {
             "input": 5,
             "cached_input": 0.5,
             "output": 30
           },
-          "source": "https://developers.openai.com/api/docs/pricing"
+          "source_refs": {
+            "pricing": "openai_pricing",
+            "eligibility": "project_eligibility_policy"
+          }
         },
         {
           "id": "gpt-5.4",
           "aliases": [
             "gpt-5.4-2026-03-05"
           ],
+          "enabled": true,
           "eligible": true,
+          "effective_from": "2026-07-31",
+          "effective_until": null,
           "pricing": {
             "input": 2.5,
             "cached_input": 0.25,
             "output": 15
           },
-          "source": "https://developers.openai.com/api/docs/pricing"
+          "source_refs": {
+            "pricing": "openai_pricing",
+            "eligibility": "project_eligibility_policy"
+          }
         },
         {
           "id": "gpt-4.1",
           "aliases": [
             "gpt-4.1-2025-04-14"
           ],
+          "enabled": true,
           "eligible": true,
+          "effective_from": "2026-07-31",
+          "effective_until": null,
           "pricing": {
             "input": 2,
             "cached_input": 0.5,
             "output": 8
           },
-          "source": "https://developers.openai.com/api/docs/pricing"
+          "source_refs": {
+            "pricing": "openai_pricing",
+            "eligibility": "project_eligibility_policy"
+          }
         }
       ]
     },
     "mini": {
       "label": "Mini / Nano 群組",
       "daily_quota_tier_1_2": 2500000,
+      "quota_source": "project_quota_policy",
       "models": [
         {
           "id": "gpt-5.6-terra",
           "aliases": [],
+          "enabled": true,
           "eligible": true,
+          "effective_from": "2026-07-31",
+          "effective_until": null,
           "pricing": {
             "input": 2,
             "cached_input": 0.2,
             "output": 12
           },
-          "source": "https://developers.openai.com/api/docs/pricing"
+          "source_refs": {
+            "pricing": "openai_pricing",
+            "eligibility": "project_eligibility_policy"
+          }
         },
         {
           "id": "gpt-5.6-luna",
           "aliases": [],
+          "enabled": true,
           "eligible": true,
+          "effective_from": "2026-07-31",
+          "effective_until": null,
           "pricing": {
             "input": 0.2,
             "cached_input": 0.02,
             "output": 1.2
           },
-          "source": "https://developers.openai.com/api/docs/pricing"
+          "source_refs": {
+            "pricing": "openai_pricing",
+            "eligibility": "project_eligibility_policy"
+          }
         },
         {
           "id": "gpt-5.4-mini",
           "aliases": [
             "gpt-5.4-mini-2026-03-17"
           ],
+          "enabled": true,
           "eligible": true,
+          "effective_from": "2026-07-31",
+          "effective_until": null,
           "pricing": {
             "input": 0.75,
             "cached_input": 0.075,
             "output": 4.5
           },
-          "source": "https://developers.openai.com/api/docs/pricing"
+          "source_refs": {
+            "pricing": "openai_pricing",
+            "eligibility": "project_eligibility_policy"
+          }
         },
         {
           "id": "gpt-5.4-nano",
           "aliases": [
             "gpt-5.4-nano-2026-03-17"
           ],
+          "enabled": true,
           "eligible": true,
+          "effective_from": "2026-07-31",
+          "effective_until": null,
           "pricing": {
             "input": 0.2,
             "cached_input": 0.02,
             "output": 1.25
           },
-          "source": "https://developers.openai.com/api/docs/pricing"
+          "source_refs": {
+            "pricing": "openai_pricing",
+            "eligibility": "project_eligibility_policy"
+          }
         }
       ]
     }

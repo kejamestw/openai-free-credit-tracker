@@ -1,0 +1,6 @@
+{
+  "base": "stable-windows.json",
+  "channel": "beta",
+  "version": "0.3.0-beta.1",
+  "expected": "channel"
+}

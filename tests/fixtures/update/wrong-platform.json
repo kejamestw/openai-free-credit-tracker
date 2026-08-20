@@ -1,0 +1,5 @@
+{
+  "base": "stable-windows.json",
+  "os": "linux",
+  "expected": "platform"
+}

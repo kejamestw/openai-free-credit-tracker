@@ -1,0 +1,424 @@
+name: Build release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: candidate is unsigned; beta/stable require every platform signature
+        required: true
+        default: candidate
+        type: choice
+        options:
+          - candidate
+          - beta
+          - stable
+
+permissions:
+  contents: read
+
+env:
+  # desktop-notifier 6.2 declares Python support through 3.13. Packaging uses
+  # an exact supported runtime; core CI separately exercises Python 3.14.
+  PYTHON_VERSION: "3.13.13"
+
+jobs:
+  quality:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: "22"
+      - name: Install release gate dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -e ".[desktop]"
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Run release gates
+        run: |
+          python scripts/validate_models.py
+          python scripts/validate_locales.py
+          python scripts/validate_contracts.py
+          python scripts/validate_docs.py
+          python scripts/audit_repository.py
+          python -m pytest -q
+          node --check web/js/domain.js
+          node --check web/js/app.js
+          node --test tests/frontend_domain.test.cjs
+      - name: Generate dependency, license, and full quality evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python -c 'from quota_monitor import __version__; print(__version__)')"
+          mkdir -p build/candidate-evidence
+          python scripts/audit_dependencies.py --output "build/candidate-evidence/OpenAI-Free-Credit-Tracker-${version}-dependency-audit.json"
+          python scripts/inventory_licenses.py --output "build/candidate-evidence/OpenAI-Free-Credit-Tracker-${version}-license-inventory.json" --fail-on-unknown
+          python scripts/run_quality_harness.py all --days 365 --projects 100 --hours 72 --output "build/candidate-evidence/OpenAI-Free-Credit-Tracker-${version}-quality-evidence.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-quality-evidence
+          path: build/candidate-evidence/*
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    needs: quality
+    runs-on: windows-2022
+    environment:
+      name: ${{ inputs.channel == 'candidate' && 'release-candidate' || 'release-stable' }}
+    timeout-minutes: 45
+    env:
+      WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_SIGNING_IDENTITY: ${{ secrets.WINDOWS_SIGNING_IDENTITY }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+      UPDATE_SIGNING_KEY_ID: ${{ secrets.UPDATE_SIGNING_KEY_ID }}
+      UPDATE_SIGNING_PUBLIC_KEY_B64: ${{ secrets.UPDATE_SIGNING_PUBLIC_KEY_B64 }}
+      UPDATE_TRUST_PUBLIC_KEYS_JSON: ${{ secrets.UPDATE_TRUST_PUBLIC_KEYS_JSON }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check -e ".[desktop]"
+          python -m pip install --disable-pip-version-check -r requirements-build.txt
+      - name: Prepare Authenticode identity when configured
+        shell: pwsh
+        run: |
+          $values = @($env:WINDOWS_CERTIFICATE_PFX, $env:WINDOWS_CERTIFICATE_PASSWORD, $env:WINDOWS_SIGNING_IDENTITY, $env:WINDOWS_TIMESTAMP_URL)
+          $configured = @($values | Where-Object { $_ }).Count
+          if ($configured -ne 0 -and $configured -ne 4) { throw "Windows signing secrets must be configured as one complete set" }
+          if ("${{ inputs.channel }}" -ne "candidate" -and $configured -ne 4) { throw "signed candidates require Windows Authenticode secrets" }
+          if ($configured -eq 4 -and "${{ inputs.channel }}" -ne "candidate") {
+            if (-not $env:WINDOWS_TIMESTAMP_URL.StartsWith("https://")) { throw "Windows timestamp URL must use HTTPS" }
+            $pfx = Join-Path $env:RUNNER_TEMP "release-certificate.pfx"
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX))
+            $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            $certificate = @(Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password | Where-Object HasPrivateKey)[0]
+            if (-not $certificate -or $certificate.Subject -notlike "*$env:WINDOWS_SIGNING_IDENTITY*") { throw "Windows signing certificate identity mismatch" }
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object FullName -Match '\\x64\\signtool.exe$' | Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signtool) { throw "signtool.exe was not found" }
+            "SIGNTOOL_EXE=$($signtool.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+            "WINDOWS_SIGNING_CERT_SHA1=$($certificate.Thumbprint)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+      - name: Generate immutable bundled update trust for signed packages
+        if: inputs.channel != 'candidate'
+        shell: pwsh
+        run: python scripts/generate_update_trust.py --output data/update-trust.json --repository $env:GITHUB_REPOSITORY
+      - name: Build portable executable and Inno Setup installer
+        shell: pwsh
+        run: |
+          python scripts/build_release.py --platform windows --arch x86_64 --channel "${{ inputs.channel }}" --with-installer --output-dir dist/release-artifacts
+          $version = python -c "from quota_monitor import __version__; print(__version__)"
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Generate platform SBOM
+        shell: pwsh
+        run: python scripts/generate_sbom.py --output "dist/release-artifacts/OpenAI-Free-Credit-Tracker-$env:PACKAGE_VERSION-windows-x86_64.cdx.json"
+      - name: Verify Authenticode signatures when configured
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_SIGNING_CERT_SHA1) {
+            Get-ChildItem -File dist/release-artifacts/*.exe | ForEach-Object {
+              $signature = Get-AuthenticodeSignature -LiteralPath $_.FullName
+              if ($signature.Status -ne "Valid") { throw "Invalid Authenticode signature: $($_.Name) ($($signature.Status))" }
+              if ($signature.SignerCertificate.Subject -notlike "*$env:WINDOWS_SIGNING_IDENTITY*") { throw "Authenticode identity mismatch: $($_.Name)" }
+            }
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: platform-windows-x86_64
+          path: dist/release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove ephemeral Authenticode material
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_SIGNING_CERT_SHA1) { Remove-Item "Cert:\CurrentUser\My\$env:WINDOWS_SIGNING_CERT_SHA1" -Force -ErrorAction SilentlyContinue }
+          Remove-Item (Join-Path $env:RUNNER_TEMP "release-certificate.pfx") -Force -ErrorAction SilentlyContinue
+
+  macos:
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x86_64
+            uname: x86_64
+          - runner: macos-15
+            arch: arm64
+            uname: arm64
+    runs-on: ${{ matrix.runner }}
+    environment:
+      name: ${{ inputs.channel == 'candidate' && 'release-candidate' || 'release-stable' }}
+    timeout-minutes: 60
+    env:
+      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      UPDATE_SIGNING_KEY_ID: ${{ secrets.UPDATE_SIGNING_KEY_ID }}
+      UPDATE_SIGNING_PUBLIC_KEY_B64: ${{ secrets.UPDATE_SIGNING_PUBLIC_KEY_B64 }}
+      UPDATE_TRUST_PUBLIC_KEYS_JSON: ${{ secrets.UPDATE_TRUST_PUBLIC_KEYS_JSON }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Require the native architecture
+        shell: bash
+        run: test "$(uname -m)" = "${{ matrix.uname }}"
+      - name: Install build dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -e ".[desktop]"
+          python -m pip install --disable-pip-version-check -r requirements-build.txt
+      - name: Prepare an ephemeral signing identity when configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          values=("$MACOS_CERTIFICATE_P12" "$MACOS_CERTIFICATE_PASSWORD" "$MACOS_SIGNING_IDENTITY" "$APPLE_API_KEY_P8" "$APPLE_API_KEY_ID" "$APPLE_API_ISSUER")
+          configured=0
+          for value in "${values[@]}"; do
+            if [[ -n "$value" ]]; then configured=$((configured + 1)); fi
+          done
+          if [[ "$configured" -ne 0 && "$configured" -ne 6 ]]; then
+            echo "macOS signing/notarization secrets must be configured as one complete set" >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.channel }}" != "candidate" && "$configured" -ne 6 ]]; then
+            echo "signed candidates require Developer ID signing and notarization secrets" >&2
+            exit 1
+          fi
+          if [[ "$configured" -eq 6 && "${{ inputs.channel }}" != "candidate" ]]; then
+            keychain="$RUNNER_TEMP/release-signing.keychain-db"
+            password="$(openssl rand -hex 24)"
+            certificate="$RUNNER_TEMP/release-certificate.p12"
+            api_key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            printf '%s' "$MACOS_CERTIFICATE_P12" | base64 -D > "$certificate"
+            printf '%s' "$APPLE_API_KEY_P8" > "$api_key"
+            security create-keychain -p "$password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$password" "$keychain"
+            security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
+            security list-keychains -d user -s "$keychain"
+            echo "APPLE_API_KEY_PATH=$api_key" >> "$GITHUB_ENV"
+            echo "RELEASE_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          fi
+      - name: Generate immutable bundled update trust for signed packages
+        if: inputs.channel != 'candidate'
+        run: python scripts/generate_update_trust.py --output data/update-trust.json --repository "$GITHUB_REPOSITORY"
+      - name: Build app bundle and DMG
+        run: |
+          python scripts/build_release.py --platform macos --arch "${{ matrix.arch }}" --channel "${{ inputs.channel }}" --output-dir dist/release-artifacts
+          version="$(python -c 'from quota_monitor import __version__; print(__version__)')"
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Generate platform SBOM
+        run: python scripts/generate_sbom.py --output "dist/release-artifacts/OpenAI-Free-Credit-Tracker-${PACKAGE_VERSION}-macos-${{ matrix.arch }}.cdx.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: platform-macos-${{ matrix.arch }}
+          path: dist/release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove ephemeral signing material
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${RELEASE_KEYCHAIN:-}" ]]; then security delete-keychain "$RELEASE_KEYCHAIN" || true; fi
+          rm -f "$RUNNER_TEMP/release-certificate.p12" "$RUNNER_TEMP"/AuthKey_*.p8
+
+  linux:
+    needs: quality
+    runs-on: ubuntu-22.04
+    environment:
+      name: ${{ inputs.channel == 'candidate' && 'release-candidate' || 'release-stable' }}
+    timeout-minutes: 45
+    env:
+      LINUX_GPG_PRIVATE_KEY_B64: ${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}
+      LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+      LINUX_GPG_KEY_FINGERPRINT: ${{ secrets.LINUX_GPG_KEY_FINGERPRINT }}
+      UPDATE_SIGNING_KEY_ID: ${{ secrets.UPDATE_SIGNING_KEY_ID }}
+      UPDATE_SIGNING_PUBLIC_KEY_B64: ${{ secrets.UPDATE_SIGNING_PUBLIC_KEY_B64 }}
+      UPDATE_TRUST_PUBLIC_KEYS_JSON: ${{ secrets.UPDATE_TRUST_PUBLIC_KEYS_JSON }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install build dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -e ".[desktop]"
+          python -m pip install --disable-pip-version-check -r requirements-build.txt
+      - name: Validate Linux signing secret set
+        shell: bash
+        run: |
+          set -euo pipefail
+          values=("$LINUX_GPG_PRIVATE_KEY_B64" "$LINUX_GPG_PASSPHRASE" "$LINUX_GPG_KEY_FINGERPRINT")
+          configured=0
+          for value in "${values[@]}"; do if [[ -n "$value" ]]; then configured=$((configured + 1)); fi; done
+          if [[ "$configured" -ne 0 && "$configured" -ne 3 ]]; then echo "Linux signing secrets must be configured as one complete set" >&2; exit 1; fi
+          if [[ "${{ inputs.channel }}" != "candidate" && "$configured" -ne 3 ]]; then echo "signed candidates require Linux OpenPGP secrets" >&2; exit 1; fi
+      - name: Generate immutable bundled update trust for signed packages
+        if: inputs.channel != 'candidate'
+        run: python scripts/generate_update_trust.py --output data/update-trust.json --repository "$GITHUB_REPOSITORY"
+      - name: Fetch pinned AppImage build tools
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/fetch_pinned_tool.py appimagetool-x86_64 --output build/tools/appimagetool-x86_64.AppImage
+          python scripts/fetch_pinned_tool.py runtime-x86_64 --output build/tools/runtime-x86_64
+      - name: Build tarball and AppImage
+        run: |
+          python scripts/build_release.py --platform linux --arch x86_64 --channel "${{ inputs.channel }}" --appimagetool build/tools/appimagetool-x86_64.AppImage --appimage-runtime build/tools/runtime-x86_64 --output-dir dist/release-artifacts
+          version="$(python -c 'from quota_monitor import __version__; print(__version__)')"
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Generate platform SBOM
+        run: python scripts/generate_sbom.py --output "dist/release-artifacts/OpenAI-Free-Credit-Tracker-${PACKAGE_VERSION}-linux-x86_64.cdx.json"
+      - name: Sign and verify Linux artifacts for a signed candidate
+        if: inputs.channel != 'candidate'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$LINUX_GPG_PRIVATE_KEY_B64" || -z "$LINUX_GPG_PASSPHRASE" || -z "$LINUX_GPG_KEY_FINGERPRINT" ]]; then
+            echo "signed candidates require the Linux OpenPGP key, passphrase, and fingerprint" >&2
+            exit 1
+          fi
+          export GNUPGHOME="$RUNNER_TEMP/release-gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          printf '%s' "$LINUX_GPG_PRIVATE_KEY_B64" | base64 --decode | gpg --batch --quiet --import
+          expected="$(printf '%s' "$LINUX_GPG_KEY_FINGERPRINT" | tr '[:lower:]' '[:upper:]')"
+          actual="$(gpg --batch --with-colons --list-secret-keys "$expected" | awk -F: '$1 == "fpr" { print $10; exit }')"
+          if [[ "$actual" != "$expected" ]]; then echo "Linux signing fingerprint mismatch" >&2; exit 1; fi
+          for artifact in dist/release-artifacts/*.tar.gz dist/release-artifacts/*.AppImage; do
+            printf '%s' "$LINUX_GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --armor --local-user "$expected" --output "$artifact.asc" --detach-sign "$artifact"
+            gpg --batch --verify "$artifact.asc" "$artifact"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: platform-linux-x86_64
+          path: dist/release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove ephemeral Linux signing keyring
+        if: always()
+        shell: bash
+        run: |
+          keyring="${RUNNER_TEMP:?}/release-gnupg"
+          [[ "$keyring" == "$RUNNER_TEMP/"* ]] || exit 1
+          rm -rf -- "$keyring"
+
+  aggregate:
+    needs: [quality, windows, macos, linux]
+    runs-on: ubuntu-22.04
+    environment:
+      name: ${{ inputs.channel == 'candidate' && 'release-candidate' || 'release-stable' }}
+    timeout-minutes: 45
+    env:
+      WINDOWS_SIGNING_IDENTITY: ${{ secrets.WINDOWS_SIGNING_IDENTITY }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      LINUX_GPG_KEY_FINGERPRINT: ${{ secrets.LINUX_GPG_KEY_FINGERPRINT }}
+      OAI_UPDATE_PRIVATE_KEY_B64: ${{ secrets.UPDATE_SIGNING_KEY_B64 }}
+      UPDATE_SIGNING_KEY_ID: ${{ secrets.UPDATE_SIGNING_KEY_ID }}
+      UPDATE_SIGNING_PUBLIC_KEY_B64: ${{ secrets.UPDATE_SIGNING_PUBLIC_KEY_B64 }}
+      UPDATE_TRUST_PUBLIC_KEYS_JSON: ${{ secrets.UPDATE_TRUST_PUBLIC_KEYS_JSON }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install update-manifest signing dependencies
+        run: python -m pip install --disable-pip-version-check -e .
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          pattern: platform-*
+          path: dist/release-artifacts
+          merge-multiple: true
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: candidate-quality-evidence
+          path: dist/release-artifacts
+      - name: Install ClamAV and refresh malware definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam.service || true
+          sudo freshclam --verbose
+          definition_file="$(find /var/lib/clamav -maxdepth 1 -type f \( -name 'daily.cvd' -o -name 'daily.cld' \) -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
+          if [[ -z "$definition_file" ]]; then echo "ClamAV daily definitions are unavailable" >&2; exit 1; fi
+          definition_age="$(( $(date +%s) - $(stat -c %Y "$definition_file") ))"
+          if [[ "$definition_age" -gt 172800 ]]; then echo "ClamAV definitions are older than 48 hours" >&2; exit 1; fi
+          clamscan --version
+      - name: Generate and verify aggregate release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(PYTHONPATH=src python -c 'from quota_monitor import __version__; print(__version__)')"
+          source_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
+          unsigned="dist/release-artifacts/OpenAI-Free-Credit-Tracker-${version}-update-manifest.unsigned.json"
+          signed="dist/release-artifacts/OpenAI-Free-Credit-Tracker-${version}-update-manifest.json"
+          manifest_channel="${{ inputs.channel }}"
+          if [[ "$manifest_channel" == "candidate" ]]; then
+            if [[ "$version" == *-* ]]; then manifest_channel="beta"; else manifest_channel="stable"; fi
+          fi
+          python scripts/generate_update_manifest.py --directory dist/release-artifacts --output "$unsigned" --version "$version" --source-epoch "$source_epoch" --repository "$GITHUB_REPOSITORY" --channel "$manifest_channel"
+          metadata_args=(generate --directory dist/release-artifacts --version "$version" --source-commit "$GITHUB_SHA" --channel "${{ inputs.channel }}" --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID")
+          if [[ "${{ inputs.channel }}" != "candidate" ]]; then
+            if [[ -z "$WINDOWS_SIGNING_IDENTITY" || -z "$MACOS_SIGNING_IDENTITY" || -z "$LINUX_GPG_KEY_FINGERPRINT" || -z "$OAI_UPDATE_PRIVATE_KEY_B64" || -z "$UPDATE_SIGNING_KEY_ID" || -z "$UPDATE_SIGNING_PUBLIC_KEY_B64" ]]; then
+              echo "signed candidates require all platform identities and Ed25519 update-signing secrets" >&2
+              exit 1
+            fi
+            python scripts/update_manifest_cli.py sign --input "$unsigned" --output "$signed" --key-id "$UPDATE_SIGNING_KEY_ID" --artifact-host github.com --release-notes-host github.com
+            rm -f "$unsigned"
+            cp -- "$signed" "dist/release-artifacts/OpenAI-Free-Credit-Tracker-${manifest_channel}-update-manifest.json"
+            export OAI_UPDATE_PUBLIC_KEYS_JSON
+            if [[ -n "$UPDATE_TRUST_PUBLIC_KEYS_JSON" ]]; then
+              OAI_UPDATE_PUBLIC_KEYS_JSON="$UPDATE_TRUST_PUBLIC_KEYS_JSON"
+            else
+              OAI_UPDATE_PUBLIC_KEYS_JSON="$(python -c 'import json, os; print(json.dumps({os.environ["UPDATE_SIGNING_KEY_ID"]: os.environ["UPDATE_SIGNING_PUBLIC_KEY_B64"]}))')"
+            fi
+            python scripts/update_manifest_cli.py verify --input "$signed" --artifact-host github.com --release-notes-host github.com
+            metadata_args+=(--windows-identity "$WINDOWS_SIGNING_IDENTITY" --macos-identity "$MACOS_SIGNING_IDENTITY" --linux-fingerprint "$LINUX_GPG_KEY_FINGERPRINT" --update-key-id "$UPDATE_SIGNING_KEY_ID")
+          fi
+          malware_report="dist/release-artifacts/OpenAI-Free-Credit-Tracker-${version}-malware-scan.json"
+          mapfile -d '' scan_targets < <(find dist/release-artifacts -maxdepth 1 -type f -print0 | sort -z)
+          if [[ "${#scan_targets[@]}" -lt 16 ]]; then echo "aggregate artifact set is incomplete before malware scan" >&2; exit 1; fi
+          python scripts/scan_artifacts.py --scanner clamscan --output "$malware_report" "${scan_targets[@]}"
+          SOURCE_DATE_EPOCH="$source_epoch" python scripts/release_metadata.py "${metadata_args[@]}"
+          if [[ "${{ inputs.channel }}" != "candidate" ]]; then
+            python scripts/sign_artifact_manifest.py sign --input dist/release-artifacts/artifact-manifest.json --output dist/release-artifacts/artifact-manifest.json --key-id "$UPDATE_SIGNING_KEY_ID"
+            python scripts/sign_artifact_manifest.py verify --input dist/release-artifacts/artifact-manifest.json
+          fi
+          python scripts/release_metadata.py verify --directory dist/release-artifacts --version "$version" --source-commit "$GITHUB_SHA" --channel "${{ inputs.channel }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ inputs.channel }}-${{ github.sha }}
+          path: dist/release-artifacts/*
+          if-no-files-found: error
+          retention-days: 30
