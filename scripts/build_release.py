@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import importlib.util
 import os
 import platform
 import plistlib
@@ -137,6 +138,164 @@ def _set_macos_bundle_metadata(bundle: Path, version: str) -> None:
     )
     with info_path.open("wb") as handle:
         plistlib.dump(document, handle, sort_keys=True)
+
+
+def _macos_dependencies(binary: Path) -> list[Path]:
+    """Return the literal Mach-O dependency names reported by ``otool``."""
+
+    result = subprocess.run(
+        ["otool", "-L", str(binary)],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return [
+        Path(line.strip().split(" (", 1)[0])
+        for line in result.stdout.splitlines()[1:]
+        if line.strip()
+    ]
+
+
+def _macos_rpaths(binary: Path) -> list[str]:
+    result = subprocess.run(
+        ["otool", "-l", str(binary)],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = iter(result.stdout.splitlines())
+    paths: list[str] = []
+    for line in lines:
+        if line.strip() != "cmd LC_RPATH":
+            continue
+        for detail in lines:
+            stripped = detail.strip()
+            if stripped.startswith("path "):
+                paths.append(stripped[5:].split(" (offset ", 1)[0])
+                break
+    return paths
+
+
+def _resolve_macos_dependency(binary: Path, dependency: Path) -> Path | None:
+    install_name = dependency.as_posix()
+    if dependency.is_absolute():
+        return dependency if dependency.is_file() else None
+    suffix = install_name.split("/", 1)[1] if "/" in install_name else dependency.name
+    candidates: list[Path] = []
+    if install_name.startswith("@loader_path/"):
+        candidates.append(binary.parent / suffix)
+    elif install_name.startswith("@rpath/"):
+        # Homebrew libraries commonly colocate libssl and libcrypto. Also
+        # honor literal LC_RPATH values when the bottle embeds them.
+        candidates.append(binary.parent / suffix)
+        for rpath in _macos_rpaths(binary):
+            if rpath == "@loader_path":
+                candidates.append(binary.parent / suffix)
+            elif rpath.startswith("@loader_path/"):
+                candidates.append(binary.parent / rpath.split("/", 1)[1] / suffix)
+            elif Path(rpath).is_absolute():
+                candidates.append(Path(rpath) / suffix)
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
+def _linked_cryptography_openssl() -> dict[str, Path]:
+    spec = importlib.util.find_spec("cryptography.hazmat.bindings._rust")
+    if spec is None or spec.origin is None:
+        raise RuntimeError("cryptography native binding could not be located")
+    binding = Path(spec.origin).resolve()
+    ssl_install_name = next(
+        (
+            dependency
+            for dependency in _macos_dependencies(binding)
+            if dependency.name == "libssl.3.dylib"
+        ),
+        None,
+    )
+    ssl = (
+        _resolve_macos_dependency(binding, ssl_install_name)
+        if ssl_install_name is not None
+        else None
+    )
+    if ssl is None:
+        raise RuntimeError("cryptography Intel libssl dependency could not be located")
+    crypto_install_name = next(
+        (
+            dependency
+            for dependency in _macos_dependencies(ssl)
+            if dependency.name == "libcrypto.3.dylib"
+        ),
+        None,
+    )
+    crypto = (
+        _resolve_macos_dependency(ssl, crypto_install_name)
+        if crypto_install_name is not None
+        else None
+    )
+    if crypto is None:
+        raise RuntimeError("cryptography Intel OpenSSL dependencies are incomplete")
+    # Keep the literal install names rather than resolving Homebrew symlinks:
+    # install_name_tool must replace the exact string embedded in libssl.
+    return {"libssl.3.dylib": ssl, "libcrypto.3.dylib": crypto}
+
+
+def _bundle_intel_macos_openssl(
+    bundle: Path,
+    *,
+    libraries: dict[str, Path] | None = None,
+) -> None:
+    """Replace PyInstaller's older Python OpenSSL with cryptography's ABI."""
+
+    discovered = libraries is None
+    sources = _linked_cryptography_openssl() if discovered else libraries
+    required = {"libssl.3.dylib", "libcrypto.3.dylib"}
+    if sources.keys() != required or any(not path.is_file() for path in sources.values()):
+        raise RuntimeError("cryptography Intel OpenSSL dependencies are incomplete")
+    frameworks = bundle / "Contents" / "Frameworks"
+    if not frameworks.is_dir():
+        raise RuntimeError("macOS bundle Frameworks directory is missing")
+    destinations = {name: frameworks / name for name in required}
+    for name, source in sources.items():
+        shutil.copy2(source, destinations[name])
+        run(["install_name_tool", "-id", f"@rpath/{name}", str(destinations[name])])
+    crypto_install_name = sources["libcrypto.3.dylib"].as_posix()
+    if discovered:
+        crypto_install_name = next(
+            (
+                dependency.as_posix()
+                for dependency in _macos_dependencies(sources["libssl.3.dylib"])
+                if dependency.name == "libcrypto.3.dylib"
+            ),
+            "",
+        )
+        if not crypto_install_name:
+            raise RuntimeError("libssl does not declare its libcrypto dependency")
+    run(
+        [
+            "install_name_tool",
+            "-change",
+            crypto_install_name,
+            "@loader_path/libcrypto.3.dylib",
+            str(destinations["libssl.3.dylib"]),
+        ]
+    )
+    for destination in destinations.values():
+        run(["lipo", "-verify_arch", "x86_64", str(destination)])
+    repaired_dependencies = _macos_dependencies(destinations["libssl.3.dylib"])
+    if not any(
+        dependency.as_posix() == "@loader_path/libcrypto.3.dylib"
+        for dependency in repaired_dependencies
+    ):
+        raise RuntimeError("bundled libssl does not use its colocated libcrypto")
+    if any(
+        dependency.name in required
+        and dependency.as_posix() != "@loader_path/libcrypto.3.dylib"
+        for destination in destinations.values()
+        for dependency in _macos_dependencies(destination)
+    ):
+        raise RuntimeError("bundled OpenSSL retains an external OpenSSL dependency")
+    run(["otool", "-L", str(destinations["libssl.3.dylib"])])
 
 
 def _pyinstaller(target_os: str, target_arch: str, build_root: Path, version: str) -> Path:
@@ -581,6 +740,8 @@ def build(args: argparse.Namespace) -> list[Path]:
     bundle = _pyinstaller(args.platform, args.arch, build_root, version)
     if args.platform == "macos":
         _set_macos_bundle_metadata(bundle, version)
+        if args.arch == "x86_64":
+            _bundle_intel_macos_openssl(bundle)
     if args.platform == "windows":
         artifacts = _build_windows(
             bundle, output, version, args.channel, installer=args.with_installer

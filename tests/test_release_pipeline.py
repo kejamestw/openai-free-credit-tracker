@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import plistlib
 import re
@@ -16,6 +17,7 @@ from quota_monitor.update_crypto import Ed25519ManifestSigner
 from scripts import (
     build_release,
     fetch_pinned_tool,
+    generate_sbom,
     generate_update_manifest,
     generate_update_trust,
     release_entry,
@@ -155,6 +157,34 @@ def _write_complete_artifact_set(
     )
     paths.append(malware_path)
     return paths
+
+
+def test_platform_sbom_records_exact_native_library_hash(tmp_path, monkeypatch):
+    native = tmp_path / "libssl.3.dylib"
+    native.write_bytes(b"audited native library")
+    output = tmp_path / "platform.cdx.json"
+
+    def fake_cyclonedx(command, **_kwargs):
+        generated = Path(command[command.index("--output-file") + 1])
+        generated.write_text(
+            json.dumps(
+                {"bomFormat": "CycloneDX", "specVersion": "1.6", "components": []}
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(generate_sbom.subprocess, "run", fake_cyclonedx)
+    generate_sbom.generate_sbom(
+        output,
+        native_components=[("openssl", "3.5.4", native)],
+    )
+
+    component = json.loads(output.read_text(encoding="utf-8"))["components"][0]
+    assert component["name"] == "openssl:libssl.3.dylib"
+    assert component["version"] == "3.5.4"
+    assert component["hashes"] == [
+        {"alg": "SHA-256", "content": hashlib.sha256(native.read_bytes()).hexdigest()}
+    ]
 
 
 def test_packaged_self_test_covers_locales_database_exports_and_clean_shutdown(capsys):
@@ -712,6 +742,85 @@ def test_macos_bundle_is_resigned_after_native_metadata_changes(tmp_path, monkey
     assert commands[1][:4] == ["codesign", "--verify", "--deep", "--strict"]
 
 
+def test_intel_macos_bundle_uses_cryptography_openssl_abi(tmp_path, monkeypatch):
+    bundle = tmp_path / "Tracker.app"
+    frameworks = bundle / "Contents" / "Frameworks"
+    frameworks.mkdir(parents=True)
+    source_ssl = tmp_path / "source" / "libssl.3.dylib"
+    source_crypto = tmp_path / "source" / "libcrypto.3.dylib"
+    source_ssl.parent.mkdir()
+    source_ssl.write_bytes(b"new ssl abi")
+    source_crypto.write_bytes(b"new crypto abi")
+    (frameworks / source_ssl.name).write_bytes(b"old ssl abi")
+    (frameworks / source_crypto.name).write_bytes(b"old crypto abi")
+    commands = []
+    monkeypatch.setattr(build_release, "run", lambda command, **_kwargs: commands.append(command))
+    monkeypatch.setattr(
+        build_release,
+        "_macos_dependencies",
+        lambda binary: (
+            [Path("@loader_path/libcrypto.3.dylib")]
+            if binary == frameworks / "libssl.3.dylib"
+            else []
+        ),
+    )
+
+    build_release._bundle_intel_macos_openssl(
+        bundle,
+        libraries={
+            source_ssl.name: source_ssl,
+            source_crypto.name: source_crypto,
+        },
+    )
+
+    assert (frameworks / source_ssl.name).read_bytes() == b"new ssl abi"
+    assert (frameworks / source_crypto.name).read_bytes() == b"new crypto abi"
+    assert any(command[1:3] == ["-id", "@rpath/libssl.3.dylib"] for command in commands)
+    assert any(command[1:3] == ["-id", "@rpath/libcrypto.3.dylib"] for command in commands)
+    assert any(
+        command[1:4]
+        == ["-change", source_crypto.as_posix(), "@loader_path/libcrypto.3.dylib"]
+        for command in commands
+    )
+    assert sum(command[:3] == ["lipo", "-verify_arch", "x86_64"] for command in commands) == 2
+
+
+def test_intel_macos_openssl_discovery_follows_libssl_dependency(tmp_path, monkeypatch):
+    binding = tmp_path / "_rust.abi3.so"
+    ssl = tmp_path / "homebrew" / "libssl.3.dylib"
+    crypto = tmp_path / "homebrew" / "libcrypto.3.dylib"
+    binding.write_bytes(b"binding")
+    ssl.parent.mkdir()
+    ssl.write_bytes(b"ssl")
+    crypto.write_bytes(b"crypto")
+
+    class Spec:
+        origin = str(binding)
+
+    monkeypatch.setattr(build_release.importlib.util, "find_spec", lambda _name: Spec())
+    monkeypatch.setattr(
+        build_release,
+        "_macos_dependencies",
+        lambda binary: [ssl] if binary == binding.resolve() else [crypto],
+    )
+
+    assert build_release._linked_cryptography_openssl() == {
+        "libssl.3.dylib": ssl,
+        "libcrypto.3.dylib": crypto,
+    }
+
+
+@pytest.mark.parametrize("token", ["@loader_path/libssl.3.dylib", "@rpath/libssl.3.dylib"])
+def test_macos_dependency_tokens_resolve_to_colocated_library(tmp_path, monkeypatch, token):
+    binary = tmp_path / "_rust.abi3.so"
+    library = tmp_path / "libssl.3.dylib"
+    binary.write_bytes(b"binding")
+    library.write_bytes(b"ssl")
+    monkeypatch.setattr(build_release, "_macos_rpaths", lambda _binary: ["@loader_path"])
+
+    assert build_release._resolve_macos_dependency(binary, Path(token)) == library
+
+
 def test_packaged_verifier_reports_bounded_native_loader_diagnostics(tmp_path):
     def failed_runner(*_args, **_kwargs):
         return subprocess.CompletedProcess(
@@ -758,10 +867,17 @@ def test_candidate_and_publish_workflows_are_strictly_separated():
     assert "signed candidates require Developer ID signing" in candidate
     assert "scripts/fetch_pinned_tool.py" in candidate
     assert "xvfb-run --auto-servernum python scripts/build_release.py --platform linux" in candidate
-    assert '"cryptography>=43.0,<49.0"' in (ROOT / "pyproject.toml").read_text(
+    assert '"cryptography>=50.0,<51.0"' in (ROOT / "pyproject.toml").read_text(
         encoding="utf-8"
     )
     assert 'metadata_args=(generate --directory' in candidate
+    assert "pip-audit==2.10.1" in (ROOT / "requirements-build.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "Audit the installed Windows build environment" in candidate
+    assert "Audit the installed macOS build environment" in candidate
+    assert "Audit the installed Linux build environment" in candidate
+    assert "--native-component openssl" in candidate
     assert "Get-AuthenticodeSignature" in candidate
     assert "WINDOWS_CERTIFICATE_PFX" in candidate
     assert "gpg --batch --verify" in candidate

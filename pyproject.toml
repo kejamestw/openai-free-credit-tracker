@@ -17,9 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
 ]
 dependencies = [
-  # cryptography 49+ removed macOS x86_64 wheels. Source builds bind to the
-  # runner's Homebrew OpenSSL and are not reproducible inside PyInstaller.
-  "cryptography>=43.0,<49.0",
+  "cryptography>=50.0,<51.0",
 ]
 
 [project.optional-dependencies]
