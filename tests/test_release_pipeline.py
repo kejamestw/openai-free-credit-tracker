@@ -874,6 +874,9 @@ def test_candidate_and_publish_workflows_are_strictly_separated():
     assert "pip-audit==2.10.1" in (ROOT / "requirements-build.txt").read_text(
         encoding="utf-8"
     )
+    assert "truststore==0.10.4" in (ROOT / "requirements-build.txt").read_text(
+        encoding="utf-8"
+    )
     assert "Audit the installed Windows build environment" in candidate
     assert "Audit the installed macOS build environment" in candidate
     assert "Audit the installed Linux build environment" in candidate

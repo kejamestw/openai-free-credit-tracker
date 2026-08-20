@@ -1,3 +1,4 @@
 pyinstaller==6.21.0
 cyclonedx-bom==7.1.0
 pip-audit==2.10.1
+truststore==0.10.4
