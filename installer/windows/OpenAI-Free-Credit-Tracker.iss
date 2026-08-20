@@ -35,7 +35,9 @@ VersionInfoVersion={#NumericVersion}
 VersionInfoCompany=kejamestw
 VersionInfoDescription=OpenAI Free Credit Tracker per-user installer
 VersionInfoProductName=OpenAI Free Credit Tracker
-VersionInfoProductVersion={#AppVersion}
+VersionInfoProductVersion={#NumericVersion}
+VersionInfoProductTextVersion={#AppVersion}
+VersionInfoTextVersion={#AppVersion}
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "OpenAI-Free-Credit-Tracker.exe"; Flags: ignoreversion

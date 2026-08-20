@@ -687,6 +687,8 @@ def test_native_metadata_and_stable_macos_credentials_are_fail_closed(tmp_path, 
         encoding="utf-8"
     )
     assert "VersionInfoVersion={#NumericVersion}" in installer
+    assert "VersionInfoProductVersion={#NumericVersion}" in installer
+    assert "VersionInfoProductTextVersion={#AppVersion}" in installer
 
     for name in (
         "MACOS_SIGNING_IDENTITY",
@@ -908,6 +910,7 @@ def test_candidate_and_publish_workflows_are_strictly_separated():
     assert "Audit the installed macOS build environment" in candidate
     assert "Audit the installed Linux build environment" in candidate
     assert "--native-component openssl" in candidate
+    assert "Windows release build failed with exit code" in candidate
     assert "Get-AuthenticodeSignature" in candidate
     assert "WINDOWS_CERTIFICATE_PFX" in candidate
     assert "gpg --batch --verify" in candidate
