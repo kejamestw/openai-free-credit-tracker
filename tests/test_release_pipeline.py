@@ -759,9 +759,12 @@ def test_intel_macos_bundle_uses_cryptography_openssl_abi(tmp_path, monkeypatch)
         build_release,
         "_macos_dependencies",
         lambda binary: (
-            [Path("@loader_path/libcrypto.3.dylib")]
+            [
+                Path("@rpath/libssl.3.dylib"),
+                Path("@loader_path/libcrypto.3.dylib"),
+            ]
             if binary == frameworks / "libssl.3.dylib"
-            else []
+            else [Path("@rpath/libcrypto.3.dylib")]
         ),
     )
 
@@ -786,6 +789,27 @@ def test_intel_macos_bundle_uses_cryptography_openssl_abi(tmp_path, monkeypatch)
         command[0] == "lipo" and command[-2:] == ["-verify_arch", "x86_64"]
         for command in commands
     ) == 2
+
+    monkeypatch.setattr(
+        build_release,
+        "_macos_dependencies",
+        lambda binary: (
+            [
+                Path("@rpath/libssl.3.dylib"),
+                Path("/usr/local/opt/openssl@3/lib/libcrypto.3.dylib"),
+            ]
+            if binary == frameworks / "libssl.3.dylib"
+            else [Path("@rpath/libcrypto.3.dylib")]
+        ),
+    )
+    with pytest.raises(RuntimeError, match="bundled (libssl|OpenSSL)"):
+        build_release._bundle_intel_macos_openssl(
+            bundle,
+            libraries={
+                source_ssl.name: source_ssl,
+                source_crypto.name: source_crypto,
+            },
+        )
 
 
 def test_intel_macos_openssl_discovery_follows_libssl_dependency(tmp_path, monkeypatch):

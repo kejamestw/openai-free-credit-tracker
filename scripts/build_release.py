@@ -288,13 +288,20 @@ def _bundle_intel_macos_openssl(
         for dependency in repaired_dependencies
     ):
         raise RuntimeError("bundled libssl does not use its colocated libcrypto")
-    if any(
-        dependency.name in required
-        and dependency.as_posix() != "@loader_path/libcrypto.3.dylib"
-        for destination in destinations.values()
-        for dependency in _macos_dependencies(destination)
-    ):
-        raise RuntimeError("bundled OpenSSL retains an external OpenSSL dependency")
+    allowed_openssl_names = {
+        "libssl.3.dylib": {
+            "@rpath/libssl.3.dylib",
+            "@loader_path/libcrypto.3.dylib",
+        },
+        "libcrypto.3.dylib": {"@rpath/libcrypto.3.dylib"},
+    }
+    for name, destination in destinations.items():
+        if any(
+            dependency.name in required
+            and dependency.as_posix() not in allowed_openssl_names[name]
+            for dependency in _macos_dependencies(destination)
+        ):
+            raise RuntimeError("bundled OpenSSL retains an external OpenSSL dependency")
     run(["otool", "-L", str(destinations["libssl.3.dylib"])])
 
 
