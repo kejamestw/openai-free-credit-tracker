@@ -61,7 +61,7 @@ jobs:
           python scripts/audit_dependencies.py --output "build/candidate-evidence/OpenAI-Free-Credit-Tracker-${version}-dependency-audit.json"
           python scripts/inventory_licenses.py --output "build/candidate-evidence/OpenAI-Free-Credit-Tracker-${version}-license-inventory.json" --fail-on-unknown
           python scripts/run_quality_harness.py all --days 365 --projects 100 --hours 72 --output "build/candidate-evidence/OpenAI-Free-Credit-Tracker-${version}-quality-evidence.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: candidate-quality-evidence
           path: build/candidate-evidence/*
@@ -142,7 +142,7 @@ jobs:
               if ($signature.SignerCertificate.Subject -notlike "*$env:WINDOWS_SIGNING_IDENTITY*") { throw "Authenticode identity mismatch: $($_.Name)" }
             }
           }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: platform-windows-x86_64
           path: dist/release-artifacts/*
@@ -255,7 +255,7 @@ jobs:
             args+=(--native-component openssl "$openssl_version" "$openssl_prefix/lib/libcrypto.3.dylib")
           fi
           python scripts/generate_sbom.py "${args[@]}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: platform-macos-${{ matrix.arch }}
           path: dist/release-artifacts/*
@@ -340,7 +340,7 @@ jobs:
             printf '%s' "$LINUX_GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --armor --local-user "$expected" --output "$artifact.asc" --detach-sign "$artifact"
             gpg --batch --verify "$artifact.asc" "$artifact"
           done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: platform-linux-x86_64
           path: dist/release-artifacts/*
@@ -440,7 +440,7 @@ jobs:
             python scripts/sign_artifact_manifest.py verify --input dist/release-artifacts/artifact-manifest.json
           fi
           python scripts/release_metadata.py verify --directory dist/release-artifacts --version "$version" --source-commit "$GITHUB_SHA" --channel "${{ inputs.channel }}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-${{ inputs.channel }}-${{ github.sha }}
           path: dist/release-artifacts/*
